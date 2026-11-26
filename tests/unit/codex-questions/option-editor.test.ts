@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { matchesQuestion, questionView } from "../../../src/codex/questions/frame.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
-import { captured } from "./helpers.ts";
+import { captured, withDrawnRows } from "./helpers.ts";
 
 const question: QuestionDefinition = {
   prompt: "ELWOOD_ASYNC_COLOR: Which color?",
@@ -36,21 +36,26 @@ test("editable queued alternative retains metadata ownership", () => {
     { ...view.cursor, row: view.rawBody.length },
   ])
     expect(matchesQuestion({ ...view, cursor }, question)).toBe(false);
-  const noBlanks = view.body.filter((line) => line.length > 0);
-  expect(matchesQuestion({ ...view, body: noBlanks, cursor: view.cursor }, question)).toBe(true);
+  // Without blank rows the editor row, and the cursor on it, move up.
+  const dense = withDrawnRows(
+    view,
+    view.rawBody.filter((line) => line.trim().length > 0),
+  );
+  const row = dense.rawBody.findIndex((line) => line.includes("› 3. typed answer"));
+  expect(matchesQuestion({ ...dense, cursor: { ...view.cursor, row } }, question)).toBe(true);
 });
 test("explicit Other suggestion keeps a separate native text alternative", () => {
   const original = questionView(captured("async-editor-first.txt"))!;
-  const body = original.body.map((line) =>
+  const rows = original.rawBody.map((line) =>
     line.replace("1. Amber", "1. Other").replace("3. Other", "3. Other (write an answer)"),
   );
   expect(
-    matchesQuestion(
-      { ...original, body },
-      { ...question, options: [{ label: "Other" }, { label: "Blue" }] },
-    ),
+    matchesQuestion(withDrawnRows(original, rows), {
+      ...question,
+      options: [{ label: "Other" }, { label: "Blue" }],
+    }),
   ).toBe(true);
-  const malformed = original.body.map((line) => line.replace("2. Blue", "unknown native row"));
-  expect(matchesQuestion({ ...original, body: malformed }, question)).toBe(false);
+  const malformed = original.rawBody.map((line) => line.replace("2. Blue", "unknown native row"));
+  expect(matchesQuestion(withDrawnRows(original, malformed), question)).toBe(false);
   expect(matchesQuestion(original, { ...question, options: [] })).toBe(false);
 });

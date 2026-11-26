@@ -19,6 +19,25 @@ back each entry are listed in `prd/14-conformance.md`.
   for them. When the frames after the earlier send's Enter show that Claude took
   its input, Elwood now releases that draft without sending keys.
 
+- `autotrust: true` now approves Claude's workspace trust prompt for a folder with
+  project settings or MCP servers. Claude Code 2.1.326 and later add a load row to the
+  workspace prompt, `Trusting this folder loads <items>.`, naming `.claude/settings.json`,
+  `.claude/settings.local.json` and `.mcp.json`. Elwood treated that row, apart from the
+  hooks rows, as unknown prose, so such a session stayed `blocked`. A load row with
+  another annotation, such as ` (sets environment variables)`, is still never answered.
+  For an `.mcp.json` folder, Claude then shows its MCP server prompt, which Elwood does
+  not recognize, so the session stays `blocked` there, with the folder trusted.
+
+- `listClaudeModels` now answers only the plain workspace prompt. It rejects with
+  `claude_start_failed` for any load row and for Claude's MCP server, plugin and skill
+  prompts, with `details.category` `"workspace_hooks"`, `"workspace_mcp_servers"`,
+  `"workspace_settings"`, `"workspace_plugins"` or `"workspace_skills"`. A settings row
+  with no annotation is refused too: those settings can enable a plugin whose hooks run
+  as the session starts. A workspace prompt Elwood cannot verify now rejects with
+  `"workspace_unverified"` after five seconds instead of waiting for readiness to run
+  out. List models from a folder Claude already trusts. The probe still accepts Claude's
+  bypass-permissions disclaimer, as before.
+
 - `autotrust: true` now approves Claude's workspace trust prompt when it discloses the
   folder's hooks, and Claude then runs those hooks. Claude Code 2.1.329 and later add two
   hooks rows to that prompt, naming `.claude/settings.json`, `.claude/settings.local.json`
@@ -29,14 +48,13 @@ back each entry are listed in `prd/14-conformance.md`.
   rather than chosen. It rejects with `claude_start_failed` and
   `details.category: "workspace_hooks"`, and the folder stays untrusted. A Claude older
   than 2.1.329, or of an unparseable version, cannot disclose hooks, so on it
-  `listClaudeModels` refuses every workspace trust prompt Elwood verifies the same way. A
-  prompt Elwood cannot verify, such as the load row alone that 2.1.326 through 2.1.328
-  draw, is never answered, so the probe fails when readiness runs out. List models from a
-  folder Claude already trusts.
+  `listClaudeModels` refuses every workspace trust prompt Elwood verifies the same way.
+  List models from a folder Claude already trusts.
 
 - Claude workspace trust requests have `disclosesHooks`. It is `true` when the prompt
   disclosed hooks that run once the folder is trusted. `false` means only that the prompt
-  disclosed none, not that the folder has no hooks. `ElwoodDialogRequest<ElwoodAgentKind>`
+  disclosed none, not that the folder has no hooks: a load row naming settings files alone
+  can enable plugins whose hooks run. `ElwoodDialogRequest<ElwoodAgentKind>`
   is now a union, so narrowing `agent` to `"claude"` exposes the field. With automatic
   trust off, `listDialogs()` now lists that prompt and `answerDialog()` answers it.
 
@@ -73,8 +91,11 @@ back each entry are listed in `prd/14-conformance.md`.
   question's footer wraps in a pane narrower than about 90 columns, and a queued
   one's at about 60 columns or fewer. Elwood read the footer only on one row, so it
   missed the question: ordinary input was not held for it and `answerQuestions()`
-  failed. A modal question whose option descriptions also wrap holds input but is
-  not yet listed.
+  failed.
+- Codex modal questions whose option descriptions wrap in a narrow pane (about 60
+  columns or fewer for short descriptions) are listed and can be answered. Elwood
+  read each option from one row, so it held input for such a question but never
+  listed it.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A

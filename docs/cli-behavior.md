@@ -907,13 +907,43 @@ resolved and the session reached `ready` about 2.3 s after the answer, and the h
 finished at about 22 s. A slow hook therefore cannot push an answer that trusted the
 folder past `answerDialog()`'s 12 s default.
 
-**Claude 2.1.332 draws other load rows that Elwood does not verify.** A folder with
-only `.mcp.json` draws `Trusting this folder loads .mcp.json here or above (MCP
-servers).` in the hooks rows' place, with no warning row. A folder whose
-`.claude/settings.json` enables a plugin from a project marketplace, and declares no
-hooks, draws `Trusting this folder loads .claude/settings.json.` Either row alone is
-unknown prose, so `autotrust: true` stays `blocked` on such a folder and the model
-probe fails when readiness runs out, without trusting it or starting the MCP server.
+**Claude's load row names every project file trusting the folder loads.** From the
+2.1.332 binary, confirmed by captures on 2.1.329 and 2.1.332 (2026-11-26, untrusted
+scratch projects in a private config dir), the row is `Trusting this folder loads
+<items>.` Its items are, in order, `.claude/settings.json` and
+`.claude/settings.local.json` when each exists and parses (even `{}`), then
+`.mcp.json here or above (MCP servers)` when an `.mcp.json` declares servers. One
+item stands alone, two join with ` and `, and three as `a, b, and c`. A settings
+file is annotated ` (runs commands)` for hooks, a status line command, or helpers,
+and ` (sets environment variables)` for an `env` entry Claude does not consider
+safe (`NODE_OPTIONS` drew it), or both. An `.mcp.json` alone draws the MCP item
+with no warning row. Captures for each kind are in
+`tests/fixtures/claude-2.1.332/trust/` and `tests/fixtures/claude-2.1.329/trust/`.
+Elwood verifies every combination of the three items with ` (runs commands)` only
+on files the hooks warning names. The environment annotation, and the binary's other
+warnings (pre-approved tool permissions, added directories, a headers helper), are
+not verified, so those prompts fail closed. C-CLAUDE-29.
+
+**A settings row with no annotation can still run code.** A project
+`.claude/settings.json` that only adds a directory marketplace inside the project
+and enables a plugin from it draws `Trusting this folder loads
+.claude/settings.json.`, the same row as an inert settings file. Trusting that
+folder ran the plugin's `SessionStart` hook as the session started, with no plugin
+prompt or other dialog (2.1.332, 2026-11-26). So the row cannot tell an inert
+settings file from one that runs code, which is why the model probe refuses any
+load row (§5.3). C-E2E-29 checks both on the real CLI.
+
+**Trusting an `.mcp.json` folder opens Claude's MCP server prompt.** After the
+workspace answer, Claude 2.1.332 shows `New MCP server found in this project:
+<name>`, then `MCP servers may execute code or access system resources. All tool
+calls require approval. Learn more in the MCP documentation.`, cursor rows `Use this
+MCP server`, `Use this and all future MCP servers in this project`, and `❯ Continue
+without using this MCP server`, and the footer `Enter to confirm · Esc to reject`
+(`tests/fixtures/claude-2.1.332/trust/mcp-server-120.txt`). The session waits on it,
+and the server starts only after `Use this MCP server`. Elwood's MCP gate accepts no
+body and does not know that footer, so the prompt fails closed: `autotrust: true`
+answers the workspace prompt, then stays `blocked` here, and the server never
+starts. The model probe refuses the prompt from its header. C-E2E-29.
 
 **Claude 2.1.331 displayed a launch subdirectory but persisted trust at the
 repository root.** The discovery matcher verifies the full path in the native
@@ -3999,9 +4029,22 @@ Elwood read a footer only on one row, so whenever one wrapped it did not recogni
 question: it did not hold ordinary input for it, and `answerQuestions()` failed. Elwood now
 joins up to four trailing rows with the footer's own separator. Captures in
 `tests/fixtures/codex-0.172.0/questions/`: `queued-footer-*.json` at 60 and 50 columns and
-`modal-footer-wrapped-{80,60,40}.json`. The 50-column modal split was seen in a probe, not
-captured, and the 40-column queued layout is synthesized in
-`tests/unit/codex-questions/narrow-footer.test.ts`. A narrow pane also wraps a modal
-option's description onto a continuation row (at 60 columns and below for the proofs'
-options), which Elwood does not yet match to the question, so such a modal question holds
-input but is not listed. C-ATTN-02, C-QUESTION-04.
+`modal-footer-wrapped-{80,60,50,40}.json`. The 40-column queued layout is synthesized in
+`tests/unit/codex-questions/narrow-footer.test.ts`. C-ATTN-02, C-QUESTION-04.
+
+**A narrow pane wraps modal option descriptions.** 0.172 pads option labels to the longest
+one, so every description starts in one column, and wraps a description too long for its
+row onto rows indented to that column. At 60 columns only `(tab)` moves to a row of its
+own under `3. None of the above  Optionally, add details in notes`; at 50 columns
+`Optionally, add` is followed by `details in notes (tab)`; at 40 the rest takes three rows.
+A terminal wraps at a space, or inside a word too long for the row (the 0.172 update offer
+breaks a URL mid-word at 40 columns). Elwood read each option from one row, so it found an
+unknown row after the options and never listed the question, while the wrapped footer
+still held input. Elwood now takes the description column as the gap end every described
+option shares, joins each row indented exactly to it to the described option above, and
+reads each row break as one space or nothing, before matching and reading the selection.
+In the same pane the transcript's "Model changed to … for Plan" cell wraps before `mode.`,
+the hint-row badge reads `Plan mode` (see "The Plan-mode badge moved to the hint row"),
+and the `/plan` menu row reads "switch to Plan mode", so a proof waits for the badge in
+front of the warnings badge. Captures: `modal-footer-wrapped-{60,50,40}.json`.
+C-QUESTION-04.

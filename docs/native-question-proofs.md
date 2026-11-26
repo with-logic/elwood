@@ -2,7 +2,8 @@
 
 These opt-in tests exercise `listQuestions()` and `answerQuestions()` against
 real authenticated CLI processes. The Claude entrypoint uses eight valid-model
-turns in three isolated sessions. Each Codex entrypoint uses two.
+turns in three isolated sessions. Each Codex entrypoint uses two, except the
+narrow-pane proof, which uses three.
 Run them separately after `npm run check`; they consume model quota.
 
 ## Claude: C-E2E-18
@@ -104,7 +105,7 @@ a second prompt.
 ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-narrow.e2e.ts
 ```
 
-On the same pinned Codex and model, two isolated sessions each take one turn
+On the same pinned Codex and model, three isolated sessions each take one turn
 in a pane too narrow for the question footer, which Codex 0.172 wraps onto a
 second row.
 
@@ -114,7 +115,11 @@ second row.
   must be `blocked` with the note and the literal still listed. The proof
   answers both, and requires the three requests to close as answered in that
   order and `send()` to return the final reply.
-- An 80-column session in Plan mode asks the three modal questions of C-E2E-19.
-  The footer's last hint is on a row of its own, and the session must be
-  `blocked`. The proof answers the first option of each question, and requires
-  the request to close as answered and `send()` to return the final reply.
+- An 80-column and a 50-column session in Plan mode each ask the three modal
+  questions of C-E2E-19. At 80 columns the footer's last hint is on a row of its
+  own; at 50 the footer splits in two and the description of "None of the above"
+  wraps too. The proof requires that layout on screen and the session to be
+  `blocked`, then runs the C-E2E-19 modal phase: its answers select "None of the
+  above" and add notes, and it requires the committed native answers, the final
+  reply, no remaining question and `ready`, and the request to close as
+  answered.
