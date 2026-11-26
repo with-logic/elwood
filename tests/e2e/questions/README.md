@@ -26,9 +26,10 @@ shows pending answers differently; see "Codex 0.172.0 Plan mode and queued
 choices" in `docs/cli-behavior.md`. These are
 maintainer characterization tools; they do not prove the public answer API.
 The owned dependent public proofs are `tests/e2e/codex-questions.e2e.ts`
-(C-E2E-19) and `tests/e2e/codex-question-turn-end.e2e.ts` (C-ATTN-02),
-documented in the consumer proof guide above. Run those entrypoints
-separately to verify public discovery, answering, native acceptance, and closure.
+(C-E2E-19), `tests/e2e/codex-question-turn-end.e2e.ts` (C-ATTN-02) and
+`tests/e2e/codex-question-narrow.e2e.ts` (C-QUESTION-04), documented in the
+consumer proof guide above. Run those entrypoints separately to verify public
+discovery, answering, native acceptance, and closure.
 `nativeCodexQuestionSandbox()` also supplies the isolated PTY for deeper cursor
 and cell-style probes. Its caller must await `dispose()` in a `finally` block.
 All sandboxes remove private homes and verify parent configuration is unchanged.

@@ -20,12 +20,13 @@ import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 
 const verifiedAgainst =
-  "codex-cli 0.142.5; work pulses/questions: 0.163.0; resume: 0.164.0; ultra composer: 0.169.0; standalone question footer: 0.171.0; Plan-mode hint badge, parked question cursor and pending answers: 0.172.0";
+  "codex-cli 0.142.5; work pulses/questions: 0.163.0; resume: 0.164.0; ultra composer: 0.169.0; standalone question footer: 0.171.0; Plan-mode hint badge, parked question cursor, pending answers and wrapped question footers: 0.172.0";
 
 /**
  * Original rules verified against codex-cli 0.142.5; 0.163.0 captures additionally
  * verify pulsing work and native question panels, and 0.172.0 captures its Plan-mode
- * hint badge, parked question cursor and pending answers. The working spinner renders
+ * hint badge, parked question cursor, pending answers and question footers wrapped in a
+ * narrow pane. The working spinner renders
  * "• Working (3s • esc to interrupt)", the interrupt banner renders
  * "■ Conversation interrupted", and the idle composer marker is a
  * line-leading "›" ("»" at ultra effort). Approval dialogs ask "Would you like to run the following
