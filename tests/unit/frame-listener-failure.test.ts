@@ -25,12 +25,15 @@ afterEach(async () => {
 
 const approval =
   "Would you like to run the following command?\r\n› 1. Yes\r\n  2. No\r\nPress enter to confirm or esc to cancel";
+// Each adapter's header drawn alone is a native boot frame, so nothing blocks at the deadline.
 const screens = {
   codex: {
+    boot: "  >_ OpenAI Codex (v0.172.0)",
     recognized: approval,
     unrecognized: capturedFrame("codex-0.171.0/startup/sign-in").trimEnd(),
   },
   claude: {
+    boot: " ▐▛███▜▌   Claude Code v2.1.332",
     recognized: "Do you want to proceed?\r\n❯ 1. Yes\r\n  2. No\r\n\r\nEsc to cancel",
     unrecognized: capturedFrame("claude-2.1.332/startup/theme-picker").trimEnd(),
   },
@@ -69,8 +72,9 @@ test.each([
   ["claude", "unrecognized"],
 ] as const)("C-ATTN-09 %s delivers an %s blocking frame after the deadline despite a throwing listener", async (agent, kind) => {
   const { statuses, data, paint } = await open(agent);
-  await paint("Loading");
+  await paint(screens[agent].boot);
   await vi.advanceTimersByTimeAsync(10_500);
+  expect(statuses).toEqual([]);
   const frame = screens[agent][kind];
   await paint(frame);
   expect(statuses).toEqual(["blocked"]);
