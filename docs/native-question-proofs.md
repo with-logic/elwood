@@ -38,7 +38,9 @@ assistant reply.
 
 A second isolated session is launched with `--name "Question Asker"`, as
 embedders that name every agent do, and submits the standalone multiple choice
-after the same notice. A named session's questionnaire closing rule replaces the
+after the same notice. Before Elwood answers Apple and Cherry, the proof checks
+Cherry at the native terminal, as a person might, and the completion must still
+report `Apple, Cherry`. A named session's questionnaire closing rule replaces the
 notice row, so this session requires the notice at the hook, no blank cells and
 the session label under the questionnaire footer. The two sessions run one after
 the other, even when the first times out.

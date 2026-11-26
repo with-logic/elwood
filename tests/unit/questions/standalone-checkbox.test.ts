@@ -2,7 +2,8 @@
 import { expect, test } from "vitest";
 import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
 import { parseClaudeQuestionScreen } from "../../../src/claude/questions/screen.ts";
-import { arrowDown } from "../../../src/core/input/constants.ts";
+import { arrowDown, arrowUp } from "../../../src/core/input/constants.ts";
+import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { questionAnswerFailed } from "../../../src/core/questions/errors.ts";
 import { paintQuestionFrame } from "./controller-helpers.ts";
 import { fixture, frame, registry, testPick } from "./helpers.ts";
@@ -79,6 +80,41 @@ test.each([
   ]);
   await answerClaudeQuestions(requestForFruits(), answers, io);
   expect(writes).toEqual([...checkboxWrites, "\r", ...extraEnters]);
+});
+
+test("C-QUESTION-03 rechecks a box a person checked after the answer's first, in native order", async () => {
+  // Claude lists labels in the order they were checked, so keeping Cherry would report `cherry, apple`.
+  const [apple, banana, cherry, cherryChecked, other, submit] = checkboxFrames(tabbedHeader);
+  const withCherry = (screen: QuestionFrame) =>
+    frame(screen.text.replace("[ ] cherry", "[✔] cherry"));
+  const onCherry = initial.text.replace("❯ 1.", "  1.").replace("  3.", "❯ 3.");
+  const onBanana = initial.text.replace("❯ 1.", "  1.").replace("  2.", "❯ 2.");
+  const { io, writes } = scriptedQuestionIo(withCherry(frame(onCherry)), [
+    withCherry(frame(onBanana)),
+    withCherry(initial),
+    withCherry(apple!),
+    withCherry(banana!),
+    cherryChecked!,
+    cherry!,
+    cherryChecked!,
+    other!,
+    submit!,
+    review,
+  ]);
+  await answerClaudeQuestions(requestForFruits(), answers, io);
+  expect(writes).toEqual([
+    arrowUp,
+    arrowUp,
+    " ",
+    arrowDown,
+    arrowDown,
+    " ",
+    " ",
+    arrowDown,
+    arrowDown,
+    "\r",
+    "\r",
+  ]);
 });
 
 test("C-QUESTION-03 rejects altered standalone review values before final Enter", async () => {

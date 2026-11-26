@@ -25,7 +25,8 @@ function groupedFrames() {
 test.each([
   "answered",
   "aborted",
-] as const)("a grouped final Enter holds input until matching native closure (%s)", async (outcome) => {
+  "mismatched",
+] as const)("C-QUESTION-03 a grouped final Enter holds input until matching native closure (%s)", async (outcome) => {
   const h = submissionHarness(fixture("questions"), groupedFrames(), {
     questions: nativeQuestions,
   } satisfies AskUserQuestionInput);
@@ -75,10 +76,19 @@ test.each([
     }
     h.hook("PostToolUse", { tool_use_id: "unrelated" });
     expect(h.questions.blocksInput()).toBe(true);
-    h.hook("PostToolUse");
+    const reportedColor = outcome === "mismatched" ? "Blue" : "Amber";
+    h.answered({ "Which test color?": reportedColor, "Which test features?": "Logging" });
     if (outcome === "answered") {
       expect(await pending).toBe("answered");
       expect(h.observed.at(-1)).toMatchObject({ phase: "closed", reason: "answered", request });
+    }
+    // The completion matches the request's identity but reports other values than Elwood submitted.
+    if (outcome === "mismatched") {
+      expect(await pending).toMatchObject({
+        code: "question_answer_failed",
+        details: { category: "aborted" },
+      });
+      expect(h.observed.at(-1)).toMatchObject({ phase: "closed", reason: "unavailable", request });
     }
     expect(h.questions.blocksInput()).toBe(false);
     expect(h.writes).toHaveLength(7);

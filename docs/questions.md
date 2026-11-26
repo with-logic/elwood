@@ -137,7 +137,9 @@ precedence and does not create a phantom terminal question. The automation start
 recognized first question; unsupported partial navigation fails safely. Completion
 hooks must match the native Claude tool-use ID (`tool_use_id`), or the ordered
 question definitions when the hook omits that ID. Unrelated Claude hooks cannot
-acknowledge the request. Elwood pastes alternative text with LF line endings,
+acknowledge the request. Once Elwood has written to the questionnaire, the
+completion must also report exactly the submitted values; anything else closes
+the request as `unavailable`. Elwood pastes alternative text with LF line endings,
 because Claude would keep a pasted CRLF pair as CR. Claude wraps long text, even
 a URL with no spaces, across rows of its editor and review; Elwood reads those
 rows as one answer.

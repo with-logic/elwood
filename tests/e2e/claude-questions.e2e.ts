@@ -51,8 +51,8 @@ proofTest(
   { rounds: ["grouped", "text", "long-text", "checkbox"], blankCells: true },
 );
 // A named session's questionnaire closing rule replaces the notice row, so no blank cells stay.
-proofTest("C-E2E-18 a named native Claude session raises and accepts a standalone checkbox", {
-  rounds: ["checkbox"],
+proofTest("C-E2E-18 a named native Claude session accepts a checkbox a person began natively", {
+  rounds: ["prechecked-checkbox"],
   blankCells: false,
   name: claudeQuestionSessionName,
 });
@@ -80,11 +80,8 @@ async function proveClaudeQuestions(
     t.signal.throwIfAborted();
     sandbox = await nativeClaudeQuestionSandbox();
     t.signal.throwIfAborted();
-    const proof = claudeNoticeProof(
-      sandbox.press,
-      () => active.session?.terminal.snapshot().text,
-      t.signal,
-    );
+    const screen = () => active.session?.terminal.snapshot().text;
+    const proof = claudeNoticeProof(sandbox.press, screen, t.signal);
     notices = proof;
     const active = new ClaudeSession({
       cwd: sandbox.cwd,
@@ -129,7 +126,7 @@ async function proveClaudeQuestions(
     const round = claudeQuestionRounds(active, events, t);
     const live = await lifecycle.start(active);
     await live.waitForStatus((status) => status === "ready", claudeReadyTimeoutMs);
-    const rounds = claudeRoundsByKind(round, texts);
+    const rounds = claudeRoundsByKind(round, texts, { press: sandbox.press, screen });
     // Rounds share the question waiter, the hook answer and the final-reply buffer: each settles first.
     for (const kind of kinds) {
       await proof.post();
