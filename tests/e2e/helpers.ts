@@ -143,15 +143,22 @@ export function hasActivity(events: readonly ElwoodActivityEvent[]): boolean {
   return events.length > 0;
 }
 
-export async function cleanup(session: E2eSession | undefined): Promise<void> {
-  if (!session) return;
+/**
+ * Tears the session down, falling back to kill. Resolves whether either confirmed the
+ * session stopped: when neither did, its CLI may still run and use its private home.
+ */
+export async function cleanup(session: E2eSession | undefined): Promise<boolean> {
+  if (!session) return true;
   try {
     await session.teardown();
+    return true;
   } catch {
     try {
       await session.kill();
+      return true;
     } catch {
       // Best effort cleanup after a failed real-agent test.
+      return false;
     }
   }
 }
