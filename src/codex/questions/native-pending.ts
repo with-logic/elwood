@@ -36,6 +36,8 @@ export function nativeQuestionFragment(frame: QuestionFrame): boolean {
   );
   // Match the composer's bounded assistant-quotation convention: only contiguous
   // indented body rows are history; a blank row restores native-panel detection.
+  // Unlike the composer, a `? ` question cell does not start that history: rows under it that
+  // read as panel chrome keep input held, the safe answer here.
   let quoted = history >= 0;
   for (const line of frame.lines.slice(history + 1)) {
     if (quoted && /^ {2,}\S/.test(line)) continue;
