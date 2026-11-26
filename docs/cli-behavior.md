@@ -124,7 +124,7 @@ host learned of a screen like that text-style picker only at the 60-second backs
 the session still `running`. From the 10-second deadline the session is now `blocked`
 with `<agent>-unrecognized-startup` attention and an `initial_ready_deadline` report of
 the screen (§5.4, C-ATTN-11). Two real screens do this, each reported 10 s after the
-first frame (C-E2E-29, C-E2E-30):
+first frame (C-E2E-30, C-E2E-31):
 
 - Claude 2.1.332's first launch, with a config dir that has not finished onboarding
   (no `hasCompletedOnboarding`, `lastOnboardingVersion` or `theme` in `.claude.json`),
@@ -146,7 +146,7 @@ first frame (C-E2E-29, C-E2E-30):
   `3` leads to an API-key page that prefills `OPENAI_API_KEY` and shows it in full.
   An `OPENAI_API_KEY` that the session's `env` overrides still appears there when
   the launch shell's startup files export it. A report of that page would carry the
-  key, so C-E2E-30 stays on the first page and never prints the screen. Reports
+  key, so C-E2E-31 stays on the first page and never prints the screen. Reports
   replace `sk-` key-shaped tokens with `sk-[redacted]` (§5.4). A probe on 2026-11-26,
   with every character masked, showed that `3` opens a submenu whose first choice is
   that page. The key sits in a one-row bordered field (`│sk-…│`), cut at the border at

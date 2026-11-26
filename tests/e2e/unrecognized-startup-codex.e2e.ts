@@ -1,7 +1,7 @@
 /**
  * A real Codex started on a home with no login opens on its sign-in screen, which Elwood
  * does not recognize. From the readiness deadline the session is `blocked` on it with its
- * text, and nothing is written to it. Implements C-E2E-30 (PRD §5.4, C-ATTN-11).
+ * text, and nothing is written to it. Implements C-E2E-31 (PRD §5.4, C-ATTN-11).
  *
  * The test never moves past the first sign-in page: Codex's API-key page prefills the key
  * from the environment, which the launch shell's startup files can export, and would show
@@ -17,7 +17,7 @@ import { recordPty } from "./pty-record.ts";
 import { sandboxedCodexHome } from "./scratch.ts";
 import { awaitStartupBlock } from "./unrecognized-startup.ts";
 
-test("C-E2E-30 Codex's sign-in screen blocks the session, and nothing is written to it", {
+test("C-E2E-31 Codex's sign-in screen blocks the session, and nothing is written to it", {
   skip: skipIf(skipReason("codex")),
   timeout: 240_000,
 }, async () => {
