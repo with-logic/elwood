@@ -62,6 +62,10 @@ back each entry are listed in `prd/14-conformance.md`.
   now settles at `ready`. 0.172 draws a question it asks as a `? ` cell under the
   prompt, and Elwood did not read that history as finished, so the session stayed
   `blocked` and `send()` timed out.
+- Codex 0.172 queued questions can be answered in a pane 60 columns wide or
+  narrower. 0.172 wraps the queued panel's footer hints onto more rows there, and
+  Elwood did not recognize the panel, so `answerQuestions()` failed and ordinary
+  input was not held for it.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A

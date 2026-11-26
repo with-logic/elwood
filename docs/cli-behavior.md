@@ -3893,3 +3893,13 @@ should then clear it was refused, because the prompt with the `? ` cells under i
 an unfinished menu, and `send()` timed out with the session still `blocked`. Elwood now
 accepts `? ` as the start of a transcript cell. Capture:
 `tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.
+
+**A narrow pane wraps the queued panel's footer.** The footer is four hints three spaces
+apart: `enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question` (`⇧→ prev question`
+after the first question; the last question has no `⇧←` hint). At 60 and 50 columns 0.172
+moves `⇧← next question` to a row of its own; at 40 it draws `enter submit   ⌃] skip`
+above `⇧→ main prompt   ⇧← next question`. Elwood read only a footer on one row, so in a
+pane of 60 columns or fewer it never recognized the panel: it did not hold ordinary input
+for it, and `answerQuestions()` failed. Elwood now joins up to four trailing rows of
+these hints. Captures: `tests/fixtures/codex-0.172.0/questions/queued-footer-*.json`.
+C-QUESTION-04.
