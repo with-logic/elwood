@@ -38,6 +38,7 @@ test("Codex preserves the supplied reset even when the display diagnostic trunca
   });
 });
 
+const quotaExceededMessage = "Quota exceeded. Check your plan and billing details.";
 const ownerCreditsMessage = "Your workspace is out of credits. Add credits to continue.";
 const memberCreditsMessage =
   "Your workspace is out of credits. Ask your workspace owner to refill in order to continue.";
@@ -48,7 +49,39 @@ test.each([
   ["usage_limit_exceeded", `${ownerCreditsMessage} Extra text.`, "usage_limit"],
   ["usage_limit_exceeded", "You've hit your usage limit. Try again later.", "usage_limit"],
   ["other", ownerCreditsMessage, "unknown"],
-])("C-API-65 Codex classifies %s with diagnostic %s", (nativeCode, message, category) => {
+  ["usage_limit_exceeded", quotaExceededMessage, "quota_or_credit"],
+  ["usage_limit_exceeded", `${quotaExceededMessage} Extra text.`, "usage_limit"],
+  [
+    { response_too_many_failed_attempts: { http_status_code: 429 } },
+    "exceeded retry limit, last status: 429 Too Many Requests",
+    "rate_limited",
+  ],
+  [{ http_connection_failed: { http_status_code: 429 } }, "unexpected status 429", "rate_limited"],
+  [
+    { http_connection_failed: { http_status_code: 402 } },
+    "unexpected status 402 Payment Required",
+    "quota_or_credit",
+  ],
+  // The status comes only from `codex_error_info`, so these messages naming one change nothing.
+  [
+    { http_connection_failed: { http_status_code: 503 } },
+    "unexpected status 503, after 429 Too Many Requests and 402 Payment Required",
+    "network_or_api",
+  ],
+  [
+    { http_connection_failed: { http_status_code: "429" } },
+    "unexpected status 429 Too Many Requests",
+    "network_or_api",
+  ],
+  [
+    { response_too_many_failed_attempts: 429 },
+    "exceeded retry limit, last status: 429 Too Many Requests",
+    "network_or_api",
+  ],
+  ["other", "exceeded retry limit, last status: 429 Too Many Requests", "unknown"],
+  [{}, "unexpected status 402 Payment Required", "unknown"],
+  [{ a: { http_status_code: 429 }, b: {} }, "two kinds", "unknown"],
+])("C-API-65 Codex classifies %s with diagnostic %s", (codexErrorInfo, message, category) => {
   const failure = codexTurnFailureActivity({
     elwoodSessionId: "s1",
     path: "/tmp/rollout",
@@ -57,7 +90,7 @@ test.each([
       payload: {
         type: "task_complete",
         turn_id: "codex-prior",
-        error: { message, codex_error_info: nativeCode },
+        error: { message, codex_error_info: codexErrorInfo },
       },
     },
   });
