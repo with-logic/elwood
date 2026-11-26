@@ -22,5 +22,6 @@ export function codexFrameObservers(
     agent: "codex" as const,
     elwoodSessionId,
     emitActivity: (event: ElwoodActivityEvent) => emitter.emit("activity", event),
+    warnings: emitter,
   };
 }

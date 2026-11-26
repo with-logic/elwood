@@ -7,6 +7,7 @@
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import { type AttentionWatcher, activityFromAttention } from "./attention.ts";
+import { runEach } from "./contained.ts";
 import {
   type RenderedFrame,
   readScreenFacts,
@@ -84,28 +85,53 @@ export function readRenderedFrame(
   };
 }
 
-/** Apply one classified reading after the caller has latched its input guards. */
+/**
+ * Apply one classified reading after the caller has latched its input guards. A listener
+ * that throws during one step does not skip the next; the first failure is rethrown after
+ * them all, since the watchers have already spent this frame's edges (C-API-72).
+ */
 export function observeRenderedReading(
   observers: RenderedObservers,
   reading: ScreenFactReading,
   session: RenderedObserverTarget | undefined,
 ): void {
   const turnEdge = observers.turn.observe(reading.facts, session?.status === "running");
-  if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
-  if (turnEdge === "ended" && session) {
-    session.submitEvidence("rendered_turn_ended");
-    confirmNativeBoundary(session, { kind: "rendered" });
-  }
+  runEach(
+    () => {
+      if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
+    },
+    () => {
+      if (turnEdge !== "ended" || session === undefined) return;
+      runEach(
+        () => session.submitEvidence("rendered_turn_ended"),
+        () => confirmNativeBoundary(session, { kind: "rendered" }),
+      );
+    },
+    () => observeAttention(observers, reading, session),
+  );
+}
+
+function observeAttention(
+  observers: RenderedObservers,
+  reading: ScreenFactReading,
+  session: RenderedObserverTarget | undefined,
+): void {
   const attention = observers.attention.observe(reading);
   if (attention?.edge === "raised" || attention?.edge === "updated") {
-    const decision =
-      attention.edge === "raised" || session?.status !== "blocked"
-        ? session?.submitEvidence("blocking_prompt_shown")
-        : undefined;
-    if (session === undefined || decision?.to === "blocked" || session.status === "blocked") {
-      const { agent, elwoodSessionId } = observers;
-      observers.emitActivity(activityFromAttention(agent, elwoodSessionId, attention.ruleIds));
-    }
+    const { edge, ruleIds } = attention;
+    let decision: Pick<ElwoodStatusDecision, "to"> | undefined;
+    runEach(
+      () => {
+        if (edge === "raised" || session?.status !== "blocked")
+          decision = session?.submitEvidence("blocking_prompt_shown");
+      },
+      () => {
+        if (session === undefined || decision?.to === "blocked" || session.status === "blocked") {
+          const { agent, elwoodSessionId } = observers;
+          observers.emitActivity(activityFromAttention(agent, elwoodSessionId, ruleIds));
+        }
+      },
+    );
   }
   if (attention?.edge === "cleared") {
     // Establish this real turn before public status listeners can observe running.
