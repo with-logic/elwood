@@ -78,6 +78,8 @@ export function markReadyOnResumeComposer(
     ready.mark();
 }
 
+/** How long after the first rendered frame the deadline falls. */
+export const initialDeadlineMs = 10_000;
 export const initialBackstopMs = 60_000;
 
 export type ConfiguredComposerEvidence = {
@@ -96,7 +98,7 @@ export type ConfiguredComposerEvidence = {
  */
 export function initialReady(
   callback: () => void,
-  initialDeadlineMs = 10_000,
+  deadlineMs = initialDeadlineMs,
   isReadinessHeld: () => boolean = () => false,
   composer?: ConfiguredComposerEvidence,
 ): InitialReady {
@@ -162,7 +164,7 @@ export function initialReady(
         markFromTimer();
         // Observer failure must not stop the timer path, as below.
         if (!ready) runContained(() => composer?.onDeadline?.());
-      }, initialDeadlineMs);
+      }, deadlineMs);
       backstop ??= setTimeout(() => {
         markFromTimer();
         try {

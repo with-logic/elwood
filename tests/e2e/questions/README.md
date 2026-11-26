@@ -29,8 +29,8 @@ The owned dependent public proofs are `tests/e2e/codex-questions.e2e.ts`
 (C-E2E-19), `tests/e2e/codex-question-turn-end.e2e.ts` (C-ATTN-02) and
 `tests/e2e/codex-question-narrow.e2e.ts` (C-QUESTION-04), documented in the
 consumer proof guide above. `tests/e2e/codex-ready-configured.e2e.ts` (C-E2E-34)
-also runs on this sandbox, and its footer check reads the sandbox's
-`status_line`. Run those entrypoints separately to verify public
+and `tests/e2e/codex-effort-lapse-wait.e2e.ts` (C-E2E-37) also run on this
+sandbox, and their footer checks read the sandbox's `status_line`. Run those entrypoints separately to verify public
 discovery, answering, native acceptance, and closure.
 `nativeCodexQuestionSandbox()` also supplies the isolated PTY for deeper cursor
 and cell-style probes. Its caller must await `dispose()` in a `finally` block.
