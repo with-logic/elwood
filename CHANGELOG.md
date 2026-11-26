@@ -12,20 +12,23 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-25
+
 - Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,
   for the service's `insufficient_quota` (Codex records it as
   `usage_limit_exceeded` with `Quota exceeded. Check your plan and billing
   details.`). It reports `quota_or_credit`, not `network_or_api`, for an HTTP
   402, and `rate_limited`, not `network_or_api`, when Codex gives up retrying an
   HTTP 429.
-
 - Require Claude's completion of an Elwood answer to report exactly the
   submitted values. A completion with other values closes the request as
   `unavailable`, and the answer fails with `question_answer_failed`. A person's
   native answer before Elwood writes anything still closes it as answered.
-  Because Claude reports checked labels in check order, Elwood rechecks a box a
-  person checked ahead of the answer's first option, so the completion reports
-  native order. A request whose prompts repeat now fails before any write.
+  Because Claude reports checked labels in check order, a box a person already
+  checked stays checked only when it is the answer's first option. Elwood clears
+  every other checked box, then checks the rest in native order, so the
+  completion reports native order. A request whose prompts repeat now fails with
+  `question_answer_failed` before any write.
 
 - Confirm Claude alternative-text answers that Claude's editor or review wraps
   across rows, including a URL or other run with no spaces, and answers that
@@ -44,11 +47,15 @@ back each entry are listed in `prd/14-conformance.md`.
   `Submit` or `Next` row. On Claude Code 2.1.332 such a question was never
   published and ordinary input stayed held.
 
-- A matched Claude low-level text submission can include the original API text,
-  the exact native hook prompt, API paste provenance, and a caller `sendId`.
+- A Claude `user_message` matched to a `sendMessage`, `sendPrompt`, or
+  `sendGuidance` text submission can include the original API `text`, the
+  unchanged hook prompt as `nativePrompt`, API paste provenance as
+  `promptProvenance`, and the caller's optional `SendOptions.sendId`. Claude's
+  `send()` and `stream()` keep their existing prompt activity.
 
-- A matched Codex `user_message` can include the original API prompt, the
-  exact hook prompt, API paste provenance, and an optional caller `sendId`.
+- A matched Codex `user_message` can include the original API prompt as `text`,
+  the exact hook prompt as `nativePrompt`, API paste provenance as
+  `promptProvenance`, and the caller's optional `SendOptions.sendId`.
 
 - A Claude `send` or `stream` turn that the agent rejects now fails with
   `turn_failed` even when Claude changed the prompt on submit: it wrapped it in
@@ -56,19 +63,25 @@ back each entry are listed in `prd/14-conformance.md`.
   dropped trailing whitespace, or escaped a `<pasted_content` look-alike. Such a turn used to resolve with the
   rejection text as its reply.
 
-- Report Claude usage-limit rejections from live native transcript evidence,
-  including the limit name and reset time when available.
-- Report Codex quota and credit rejections from native usage snapshots,
-  including the native reason and both window resets when supplied.
+- Emit a `usage_limit_reached` `warning` when a live Claude transcript records
+  a usage-limit rejection, with the limit name (`limitName`), native type
+  (`nativeLimitType`), and reset time (`resetsAtUnixSeconds`) when available.
+- Emit the same `usage_limit_reached` `warning` when a live Codex usage snapshot
+  reports a quota or credit rejection, with the native reason
+  (`nativeLimitType`), the limit identity (`limitId`, `limitName`) when
+  supplied, and each supplied window reset
+  (`primaryResetsAtUnixSeconds`, `secondaryResetsAtUnixSeconds`).
 
 - Display supported Claude standalone paste bodies in `user_message` activity,
   with typed paste evidence and the exact native envelope.
 
-- Report `replaced` when a settled Codex workspace trust menu replaces an open
-  dialog request and automation owns the replacement.
+- Close an open Codex workspace trust dialog request as `replaced`, rather than
+  `unavailable`, when a settled trust menu replaces it while automation owns the
+  replacement.
 
-- Emit typed Claude and Codex turn-failure activity with the harness diagnostic,
-  normalized category, final disposition, and a supplied usage-limit reset.
+- Emit typed Claude and Codex `turn_failure` activity. Its `turnFailure` carries
+  the harness diagnostic as `message`, a normalized `category`, the `final`
+  `disposition`, and, for a usage limit, a supplied `resetsAtUnixSeconds`.
 
 - Mark Claude and Codex `assistant_message` activity with `final: true` when
   the transcript identifies final reply text, including replies delivered after `ready`.
