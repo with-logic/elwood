@@ -297,7 +297,10 @@ allows it. A `Stop` holds only for messages queued since the previous `Stop`;
 earlier ones belong to that earlier `Stop`. A `Stop` that holds for none
 forgets every message queued before it and marks readiness immediately. A held
 `Stop` whose messages the handler all blocks after it marks readiness, without
-a warning, once no handler is screening.
+a warning, once no handler is screening. A held `Stop` also ends the turn that
+the screen showed working: Claude's composer idles while the handler screens,
+so only work the screen shows after the `Stop` can end a turn by rendered
+evidence.
 
 Only a live `dequeue` record in the session's own transcript, stamped no
 earlier than 1 s before the `Stop` arrived, shows that Claude started the queued
