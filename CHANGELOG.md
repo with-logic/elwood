@@ -82,8 +82,9 @@ back each entry are listed in `prd/14-conformance.md`.
   including an open synchronized update. A repaint still in progress could
   replace the configured composer Elwood last rendered, and the readiness
   deadline, Claude's `InstructionsLoaded` hook or Codex's `SessionStart` hook
-  then released queued input onto the screen that replaced it. A backstop that
-  falls while that output is still undrawn now judges the frame it draws.
+  then released queued input onto the screen that replaced it. A hook, deadline
+  or backstop that meets undrawn output now judges the frame it draws, or the
+  last frame if that render fails.
 
 ## [0.8.0] - 2026-11-25
 

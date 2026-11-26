@@ -7,11 +7,11 @@
  * clears to a positive idle composer — and marks resume-composer readiness. Before the
  * first readiness it also holds physical writes until a configured composer is seen; the
  * first readiness, from a hook or otherwise, ends that hold too. No readiness source
- * judges a frame that received PTY output can still replace.
+ * judges a frame that received PTY output can still replace (`render-wait.ts`).
  * Implements PRD §5.3 (C-API-28).
  */
 
-import { ptyOutputPending } from "../../terminal/cursor.ts";
+import { runContained } from "../../core/contained.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { ComposerReadyFacts } from "../readiness/initial-ready.ts";
 import {
@@ -20,6 +20,7 @@ import {
   initialReady,
   markReadyOnResumeComposer,
 } from "../readiness/initial-ready.ts";
+import { createDeferredBackstop, createRenderWait, type DeferredBackstop } from "./render-wait.ts";
 
 /** The holds a session applies before its first readiness (C-API-28). */
 export type InitialReadinessHold = {
@@ -76,18 +77,14 @@ export function createReadinessGate(
 ): ReadinessGate {
   let readinessHeld = false;
   let backstopHold: (() => boolean) | undefined;
-  let terminal: ElwoodTerminal | undefined;
-  // A failed render can never settle. Readiness then judges the last frame, and writes
-  // stay withheld (C-API-56).
-  const live = () => (terminal?.renderFailed === false ? terminal : undefined);
-  // Received PTY output not drawn yet: its render, or its render failure, follows shortly.
-  const undrawn = (current: ElwoodTerminal | undefined) =>
-    current !== undefined && ptyOutputPending(current);
-  // A synchronized update stays open until the agent ends it, which it might never do.
-  const rendering = () => {
-    const current = live();
-    return undrawn(current) || current?.xterm.modes.synchronizedOutputMode === true;
-  };
+  let backstop: DeferredBackstop | undefined;
+  // A failed render draws no frame, so its last frame stands in: a deferred mark retries,
+  // and a deferred backstop judges. This runs in a microtask, so nothing may escape it; a
+  // throwing ready listener leaves, as at the deadline, a later hook or timer to retry.
+  const render = createRenderWait(() => {
+    runContained(() => ready.retryWhenReleased(readinessHeld));
+    backstop?.settle();
+  });
   let latest: { facts: ComposerReadyFacts; frame: string; cols: number | undefined } | undefined;
   const observeFrameHold = (
     facts: ComposerReadyFacts,
@@ -109,36 +106,19 @@ export function createReadinessGate(
   // Claude verifies an idle composer. Codex can verify its configured composer
   // during background work such as an MCP server retry.
   let evidence: ConfiguredComposerEvidence | undefined;
-  // A backstop that falls while PTY output is undrawn judges the next rendered frame.
-  let judgeBackstop: (() => void) | undefined;
   if (composer) {
     const shown = () =>
-      !rendering() &&
+      !render.rendering() &&
       latest?.facts.composer_visible === true &&
       !latest.facts.blocking_prompt_visible &&
       composer.configured(latest.frame, latest.cols);
-    const backstop = () => {
+    backstop = createDeferredBackstop(render, () => {
+      // During an open synchronized update no composer is shown, so it reports.
+      if (readyFired || shown()) return;
       backstopHold = () => !shown();
       composer.onBackstop(readinessHeld);
-    };
-    evidence = {
-      shown,
-      onBackstop: () => {
-        judgeBackstop = () => {
-          judgeBackstop = undefined;
-          try {
-            // During an open synchronized update no composer is shown, so it reports.
-            if (!(readyFired || shown())) backstop();
-          } catch {
-            // As at the backstop itself, observer failure must not release unsafe input.
-          }
-        };
-        const current = live();
-        if (current === undefined || !ptyOutputPending(current)) judgeBackstop();
-        // A render that fails draws no frame, so the last one is judged instead.
-        else void current.settled().then(() => current.renderFailed && judgeBackstop?.());
-      },
-    };
+    });
+    evidence = { shown, onBackstop: backstop.fall };
   }
   const configured = evidence?.shown ?? (() => false);
   const ready = initialReady(
@@ -150,7 +130,7 @@ export function createReadinessGate(
     undefined,
     // A mark waits for received PTY output to render, so the frame replacing the last one
     // is classified first; that frame retries it (C-API-28).
-    () => readinessHeld || rendering(),
+    () => readinessHeld || render.rendering(),
     evidence,
   );
   let configuredComposerSeen = false;
@@ -162,13 +142,11 @@ export function createReadinessGate(
     ready: {
       ...ready,
       cancel: () => {
-        judgeBackstop = undefined;
+        backstop?.cancel();
         ready.cancel();
       },
     },
-    bindTerminal: (bound) => {
-      terminal = bound;
-    },
+    bindTerminal: render.bind,
     holdsReadiness: () => readinessHeld || backstopHold?.() === true,
     holdsWrites: () => readinessHeld || !sawConfiguredComposer(),
     observeFrameHold,
@@ -176,7 +154,7 @@ export function createReadinessGate(
       observeFrameHold(facts, automationInputBlocking, frame, cols);
       if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
-      if (!undrawn(live())) judgeBackstop?.();
+      backstop?.settle();
     },
   };
 }

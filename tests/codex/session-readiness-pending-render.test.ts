@@ -137,18 +137,47 @@ test("C-API-28 a readiness hook during an open synchronized update marks once it
   expect(statuses).toEqual(["ready", "running"]);
 });
 
-test("C-API-28 host output written to the terminal does not delay readiness", async () => {
+test("C-API-28 host output still rendering does not delay readiness", async () => {
   const { session, sent, statuses, writes } = await startOnConfiguredComposer();
   await vi.advanceTimersByTimeAsync(5_000);
+  const { xterm } = session.terminal;
+  const write = xterm.write.bind(xterm);
+  let draw = () => {};
+  vi.spyOn(xterm, "write").mockImplementationOnce((data, done) => {
+    draw = () => write(data, done);
+  });
   // Drawn on the top row, away from the composer, without a PTY frame of its own.
   const written = session.terminal.writeOutput("\u001b7\u001b[1;60Hhost note\u001b8");
-  await vi.advanceTimersByTimeAsync(0);
-  await written;
-  expect(session.terminal.snapshot().text).toContain("host note");
+  let drawn = false;
+  void written.then(() => {
+    drawn = true;
+  });
   await vi.advanceTimersByTimeAsync(5_500);
-  await sent;
-  expect(writes).toEqual(queued);
+  // The deadline marked with that output undrawn. The message's write observes all output
+  // first (C-API-56), so it follows the draw.
+  expect(drawn).toBe(false);
   expect(statuses).toEqual(["ready", "running"]);
+  expect(writes).toEqual([]);
+  draw();
+  await vi.advanceTimersByTimeAsync(500);
+  await sent;
+  expect(session.terminal.snapshot().text).toContain("host note");
+  expect(writes).toEqual(queued);
+});
+
+test("C-API-28 a readiness hook deferred by output that fails to render marks on the last frame", async () => {
+  const { session, cwd, statuses, writes } = await startOnConfiguredComposer();
+  vi.spyOn(session.terminal.xterm, "write").mockImplementationOnce(() => {
+    throw new Error("render failed");
+  });
+  ptys[0]!.emitData(`${clear}${approval}`);
+  await becomeReady(session.elwoodSessionId, cwd);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(session.terminal.renderFailed).toBe(true);
+  expect(statuses).toEqual(["ready", "running"]);
+  // The failed render leaves the screen unproven, so the queued message stays withheld.
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(writes).toEqual([]);
 });
 
 test("C-API-28 a write before readiness waits for an open synchronized update", async () => {
