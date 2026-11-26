@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Skip the update offer that Codex 0.171 and later show at start and on resume,
+  for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
+  which records no dismissal in Codex's update state. It writes the key once the
+  offer has been on screen for 500 ms, never types it again onto the screen Codex
+  draws next, and holds input through that screen without reporting it as
+  `codex-unidentified-dialog`.
+
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A
   `sendMessage` sent while it is visible now waits for it to close. Before, its

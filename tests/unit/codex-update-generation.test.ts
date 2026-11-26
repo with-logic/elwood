@@ -86,7 +86,7 @@ describe("Codex update prompt generations", () => {
     expect(responder.handle(update, write, () => update).outcomes).toEqual([]);
     await vi.runAllTimersAsync();
     await expect(second.outcomes[0]?.settled).resolves.toBe("cancelled");
-    expect(writes).toHaveLength(20);
+    expect(writes).toEqual(["2"]);
   });
 
   // The clear is `observed` by handle(), still `unobserved` (only the live frame shows it),
@@ -127,15 +127,15 @@ describe("Codex update prompt generations", () => {
     await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
     expect(responder.handle(update, write, () => update).outcomes).toEqual([]);
     await vi.runAllTimersAsync();
-    expect(writes).toHaveLength(20);
+    expect(writes).toEqual(["2"]);
     // The restart-loop re-arm survives: a cleared frame, then the same screen again.
     responder.handle(codexSmallComposer, write, () => update);
     const again = responder.handle(update, write, () =>
-      writes.length > 20 ? codexSmallComposer : update,
+      writes.length > 1 ? codexSmallComposer : update,
     );
     await vi.runAllTimersAsync();
     await expect(again.outcomes[0]?.settled).resolves.toBe("answered");
-    expect(writes).toHaveLength(21);
+    expect(writes).toEqual(["2", "2"]);
   });
 
   test("an option-only replacement cannot continue an update generation", () => {

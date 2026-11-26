@@ -28,7 +28,7 @@ for (const agent of ["claude", "codex"] as const) {
       terminal,
       closing: new AbortController(),
       inputBlocking: false,
-      trustInputBlocking: false,
+      automationInputBlocking: false,
       get status() {
         return engine.status;
       },

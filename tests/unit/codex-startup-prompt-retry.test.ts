@@ -90,40 +90,6 @@ describe("Codex startup prompt retry on rejected write", () => {
     await cancellation;
   });
 
-  test("C-CODEX-12 retries a swallowed skip only while its safe option stays visible", async () => {
-    const responder = new CodexStartupPromptResponder("s1");
-    const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
-    let frame = prompt;
-    const writes: string[] = [];
-    const handled = responder.handle(
-      prompt,
-      (input) => {
-        writes.push(input);
-        if (writes.length === 2) frame = "› Ready";
-      },
-      () => frame,
-    );
-    const settled = handled.outcomes[0]?.settled;
-    await vi.runAllTimersAsync();
-    await settled;
-    expect(writes).toEqual(["2", "2"]);
-  });
-
-  test("C-CODEX-12 bounds retries when the safe update option never clears", async () => {
-    const writes: string[] = [];
-    const result = writeCodexUpdateSkip(
-      "2",
-      (input) => {
-        writes.push(input);
-      },
-      () => "Update available! 0.153.3 -> 0.153.4\n  1. Update now\n› 2. Skip",
-    );
-    const exhaustion = expect(result).resolves.toBe("exhausted");
-    await vi.runAllTimersAsync();
-    await exhaustion;
-    expect(writes).toHaveLength(20);
-  });
-
   test("C-CODEX-17 a REJECTED update-skip write stays retryable and never resolves as answered", async () => {
     const responder = new CodexStartupPromptResponder("s1");
     const frame =

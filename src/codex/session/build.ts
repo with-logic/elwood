@@ -112,7 +112,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     autotrust,
     () => dialogs.reconcileAfter(frameObserver.refresh),
     clearance,
-    () => activeSession.inputBlocking || activeSession.trustInputBlocking,
+    () => activeSession.inputBlocking || activeSession.automationInputBlocking,
     { prelude, onTakeover: dialogs.refreshAfterWorkspaceTrustTakeover },
   );
   const terminal = attachPtyTerminal(
@@ -126,6 +126,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       const frame = { text, cols, title: rendered.title };
       const read = () => cachedLiveSnapshot(rendered).text;
       const { closingSignal } = promptResponder;
+      // Made per frame: an update skip's first-key wait counts from the frame it starts on.
       const guard = guardedCodexAutomationWrite(rendered, send, read, closingSignal);
       const trustRead = () => settledLiveSnapshot(rendered)?.text;
       const result = promptResponder.handle(frame.text, send, read, guard, trustRead);

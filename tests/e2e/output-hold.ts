@@ -1,11 +1,13 @@
 /**
  * Test-only PTY seam for real-CLI timing tests. The CLI runs normally while its output can
  * be held from Elwood for a fixed time, so Elwood's view trails the CLI on demand, and raw
- * output is matched chunk by chunk. Used by the Codex e2e tests for C-API-28 and C-TRUST-01.
+ * output is matched chunk by chunk. Used by the Codex e2e tests for C-API-28, C-TRUST-01,
+ * C-E2E-26 and C-E2E-27.
  */
 
 import { createCliSanitizer } from "../../src/cli/output/sanitize.ts";
 import { nodePtyFactory } from "../../src/pty/node.ts";
+import type { PtyProcess } from "../../src/pty/types.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 
 /** Raw output kept across chunks: ample for one phrase's cursor moves and colors. */
@@ -29,43 +31,62 @@ export type OutputHoldHooks = {
 export function holdCliOutput(hooks: OutputHoldHooks): void {
   setPtyFactoryForTests((options) => {
     const pty = nodePtyFactory(options);
-    const handlers = new Set<(data: string) => void>();
-    let held: string[] | undefined;
-    const deliver = (data: string) => {
-      for (const handler of handlers) handler(data);
-    };
-    const output: HeldOutput = {
-      hold(ms, onRelease) {
-        if (held !== undefined) return;
-        held = [];
-        setTimeout(() => {
-          const chunks = held ?? [];
-          held = undefined;
-          onRelease?.();
-          for (const chunk of chunks) deliver(chunk);
-        }, ms);
-      },
-      get holding() {
-        return held !== undefined;
-      },
-    };
+    const view = heldOutputView(pty);
     pty.onData((data) => {
-      if (held === undefined) deliver(data);
-      else held.push(data);
-      hooks.output?.(data, output);
+      view.receive(data);
+      hooks.output?.(data, view.output);
     });
     return {
-      ...pty,
-      onData(handler) {
-        handlers.add(handler);
-        return () => handlers.delete(handler);
-      },
+      ...view.pty,
       write(data) {
         pty.write(data);
-        if (typeof data === "string") hooks.input?.(data, output);
+        if (typeof data === "string") hooks.input?.(data, view.output);
       },
     };
   });
+}
+
+/**
+ * Wraps `pty` so Elwood sees its output only through `receive`, which delivers each chunk
+ * or holds it while `output` is held. The caller subscribes to `pty` itself, so it can see
+ * each raw chunk before or after Elwood does.
+ */
+export function heldOutputView(pty: PtyProcess) {
+  const handlers = new Set<(data: string) => void>();
+  let held: string[] | undefined;
+  const deliver = (data: string) => {
+    for (const handler of handlers) handler(data);
+  };
+  const output: HeldOutput = {
+    hold(ms, onRelease) {
+      if (held !== undefined) return;
+      held = [];
+      setTimeout(() => {
+        const chunks = held ?? [];
+        held = undefined;
+        onRelease?.();
+        for (const chunk of chunks) deliver(chunk);
+      }, ms);
+    },
+    get holding() {
+      return held !== undefined;
+    },
+  };
+  const wrapped: PtyProcess = {
+    ...pty,
+    onData(handler) {
+      handlers.add(handler);
+      return () => handlers.delete(handler);
+    },
+  };
+  return {
+    pty: wrapped,
+    output,
+    receive(data: string) {
+      if (held === undefined) deliver(data);
+      else held.push(data);
+    },
+  };
 }
 
 /**

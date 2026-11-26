@@ -36,7 +36,7 @@ export function bindNativeInput(
         progressed() &&
         session.status === "ready" &&
         !session.inputBlocking &&
-        !session.trustInputBlocking;
+        !session.automationInputBlocking;
       return { isReady, isIdle: () => isReady() && readEmpty() !== undefined };
     },
     // Both adapters emit terminal:data after attachPtyTerminal's completed-render observer.

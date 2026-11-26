@@ -12,8 +12,8 @@
  * instead of the deadline, subject to `createReadinessGate`'s composite hold:
  * human/automation gates and their working or partial clearance frames. A composer
  * marker alone is not that evidence: a resumed CLI paints a loading placeholder with
- * the marker, and a startup screen Elwood does not recognize can select a row with it
- * (Codex 0.171.0's update offer draws `› 1. Update now`). The hooks differ on resume:
+ * the marker, and a startup dialog can select a row with it (Codex 0.171.0's update
+ * offer draws `› 1. Update now`). The hooks differ on resume:
  * Codex does NOT re-fire `SessionStart` (so the composer is the fast signal), while
  * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
  * race, whichever arrives first (readiness is idempotent). A deadline provides
