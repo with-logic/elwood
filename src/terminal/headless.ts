@@ -6,19 +6,11 @@ import { RenderCursor } from "./cursor.ts";
 import { observedInputWriter } from "./forwarded-input.ts";
 import { PtyOutput } from "./pty-output.ts";
 import { RenderQueue } from "./render-queue.ts";
-import { terminalSnapshot } from "./snapshot.ts";
-export type XtermTerminal = import("@xterm/headless").Terminal;
+import { retainFinalScreen } from "./screen.ts";
+import { type TerminalSnapshot, terminalSnapshot } from "./snapshot.ts";
 
-export type TerminalSnapshot = {
-  readonly cols: number;
-  readonly rows: number;
-  readonly cursorX: number;
-  /** Zero-based cursor row relative to the live buffer base. */
-  readonly cursorY: number;
-  /** Rows from the selected viewport in a public snapshot. */
-  readonly lines: readonly string[];
-  readonly text: string;
-};
+export type { TerminalSnapshot } from "./snapshot.ts";
+export type XtermTerminal = import("@xterm/headless").Terminal;
 
 export interface ElwoodTerminal {
   readonly xterm: XtermTerminal;
@@ -165,6 +157,9 @@ class HeadlessTerminal implements ElwoodTerminal {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Captured before the cursor tracker goes. Output still queued or staged is never drawn.
+    const hasUndrawnOutput = this.renders.hasUndrawnWrites || this.#ptyOutput?.hasStagedOutput;
+    retainFinalScreen(this, hasUndrawnOutput === true);
     for (const dispose of this.disposers.splice(0)) dispose();
     this.#ptyOutput?.dispose();
     this.renders.dispose();

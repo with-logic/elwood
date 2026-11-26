@@ -184,14 +184,18 @@ On `ClaudeSession` and `CodexSession`, call it on `session.session` after start.
 - The cursor's `x` is a terminal column. It differs from a string index on a
   row with wide characters.
 - A read can land in the middle of a repaint. Poll after `status` changes
-  rather than on a tight timer.
+  rather than on a tight timer, and stop once the session has ended: the
+  final screen never changes.
 - The call waits for output to pause and has no timeout, so race it against
   your own timer if a session might print without a break.
-- After the session exits, the call returns the screen the CLI left until
-  Elwood's cleanup disposes the terminal, shortly after the exit. From then
-  on, including after `stop()` resolves, it rejects with
-  `session_not_running`. Read the screen before you stop a session if you
-  need it.
+- After the session ends, including after `stop()` resolves, the call
+  returns the final screen from memory: the frame the terminal held when it
+  was disposed. After a normal stop that is the terminal once the CLI quit,
+  so it may show the CLI's exit rather than the last conversation:
+  after `stop()`, Claude Code 2.1.332 leaves only its resume command on the
+  normal screen under its fullscreen renderer, or that command below its last
+  frame on the normal screen, and Codex 0.171.0 leaves its last frame. Read the screen
+  before you stop a session if you need the conversation.
 
 For a pixel-faithful terminal view, keep rendering the raw `terminal:data`
 stream.

@@ -28,7 +28,6 @@ import type { ElwoodScreen, ReadScreenOptions } from "../../terminal/screen.ts";
 import { readTerminalScreen } from "../../terminal/screen.ts";
 import { CommandSurface } from "./commands.ts";
 import { type AttachTask, enqueueSubmission, type SubmitKind } from "./image-attach.ts";
-import { notRunningError } from "./not-running.ts";
 import { QuestionSessionBase } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import { SessionInputOwnership } from "./session-input.ts";
@@ -141,10 +140,9 @@ export abstract class AgentSessionBase extends QuestionSessionBase {
   ): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options, around));
   }
-  async readScreen(options?: ReadScreenOptions): Promise<ElwoodScreen> {
-    const screen = await readTerminalScreen(this.terminal, options);
-    if (screen === undefined) throw notRunningError(this.record.adapter);
-    return screen;
+  /** No status guard: after exit it reads the emulator, then the final screen (C-SCREEN-03). */
+  readScreen(options?: ReadScreenOptions): Promise<ElwoodScreen> {
+    return readTerminalScreen(this.terminal, options);
   }
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     return this.inSession(() => this.loops.create(request));

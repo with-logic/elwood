@@ -106,7 +106,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Read a session's live screen as text with `readScreen()` on the low-level
   Claude and Codex sessions, with optional scrollback, a cell cursor and the
   active buffer. It returns the live rows even when the host scrolled the
-  terminal handle back.
+  terminal handle back, and the final screen from memory after the session
+  ends.
 
 ## [0.7.0] - 2026-11-24
 
