@@ -30,6 +30,7 @@ test.each([
   ["a caret-led choice", "  ❯ Light mode"],
   ["a numbered choice", "  1. Yes"],
   ["a parenthesized number", "  2) Dark mode"],
+  ["an Enter hint", "  Enter to select"],
   ["an Esc hint", "  Esc to skip"],
   ["a Tab hint", "  Tab to switch theme"],
   ["a Press hint", "  Press any key"],
