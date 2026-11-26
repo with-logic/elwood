@@ -1,12 +1,15 @@
-/** Captured Codex 0.163.0 Plan footer retains native idle provenance (PRD §5.3/§5.8). */
+/** Captured Codex 0.163.0 and 0.172.0 Plan footers retain native idle provenance (PRD §5.3/§5.8). */
 import { expect, test } from "vitest";
 import {
+  codexComposerClearance,
+  codexComposerConfigured,
   codexComposerRow,
   codexComposerRowsClearance,
   codexComposerRowsEmpty,
 } from "../../../src/codex/screen/clearance.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { codexPlanModeFooters172 } from "../../fixtures/codex-footer-captures-172.ts";
 import { snapshot } from "../codex-questions/snapshot-fixtures.ts";
 
 const planSnapshot = snapshot("plan-completed.json");
@@ -57,4 +60,18 @@ test("C-TRUST-01 native Plan footer cannot clear a draft, active work or approva
   const approval = [...planSnapshot.lines];
   approval[0] = "Would you like to run the following command?";
   expect(codexComposerRowsEmpty(approval, { cursorRow: planSnapshot.cursorY })).toBe(false);
+});
+
+// Codex 0.172 draws its Plan-mode badge on the hint row, in front of the warnings badge.
+const [composer, blank, status] = codexPlanModeFooters172[0]!.rows;
+test.each([
+  ["a Plan-mode badge with no warnings badge after it", "  ← for agents   Plan mode ·"],
+  ["a warnings badge without its `f2`", "  ← for agents   Plan mode · ⚠ 3 warnings"],
+  ["another mode in the Plan-mode badge's place", "  ← for agents   Code mode · ⚠ 3 · f2"],
+])("C-CODEX-26 a Codex 0.172 hint row refuses %s", (_, hint) => {
+  const frame = [composer, blank, status, hint].join("\n");
+  expect([
+    codexComposerConfigured(frame, 140),
+    codexComposerClearance(frame, { cols: 140 }),
+  ]).toEqual([false, false]);
 });

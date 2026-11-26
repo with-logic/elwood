@@ -1,9 +1,9 @@
 /** Read durable Codex question captures without loading an adapter (PRD §4). */
 import { readFileSync } from "node:fs";
 
-export function fixture(name: string): string {
+export function fixture(name: string, version = "0.163.0"): string {
   return readFileSync(
-    new URL(`../../fixtures/codex-0.163.0/questions/${name}`, import.meta.url),
+    new URL(`../../fixtures/codex-${version}/questions/${name}`, import.meta.url),
     "utf8",
   );
 }
