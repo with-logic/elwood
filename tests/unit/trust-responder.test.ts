@@ -39,10 +39,11 @@ describe("allowlisted trust prompt automation", () => {
     for (const [screen, id, option] of [
       ["Load this skill?\n1. Yes, trust it", "skill_trust", "1"],
       ["Trust the plugin?\n1. Yes, continue", "plugin_trust", "1"],
-      // Real claude 2.1.205 MCP prompt: the affirmative option is "Use this MCP
-      // server" — no yes/trust/continue word — so it needs the per-prompt accept.
+      // Claude's MCP prompt, its title and options from 2.1.205 and its required native
+      // body captured from 2.1.332: the affirmative option is "Use this MCP server" — no
+      // yes/trust/continue word — so it needs the per-prompt accept.
       [
-        "New MCP server found in this project\n1. Use this MCP server\n2. Use this and all future MCP servers in this project\n3. No",
+        "New MCP server found in this project\nMCP servers may execute code or access system resources. All tool calls require approval. Learn more in the MCP documentation.\n1. Use this MCP server\n2. Use this and all future MCP servers in this project\n3. No",
         "mcp_trust",
         "1",
       ],

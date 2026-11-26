@@ -70,8 +70,10 @@ test.each([
 });
 
 test("C-CLAUDE-14 the native MCP title admits its server name, not arbitrary trailing prose", () => {
-  // Native title from the installed Claude 2.1.274 executable, with a config server key.
-  const native = "New MCP server found in this project: github\n1. Use this MCP server";
+  // Native title from the installed Claude 2.1.274 executable, with a config server key, and
+  // the native body captured from 2.1.332.
+  const native =
+    "New MCP server found in this project: github\nMCP servers may execute code or access system resources. All tool calls require approval. Learn more in the MCP documentation.\n1. Use this MCP server";
   expect(trustPromptVisible(native, "claude")).toBe(true);
   expect(
     trustPromptVisible(native.replace(": github", ": github Unknown migration"), "claude"),
