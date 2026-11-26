@@ -127,8 +127,8 @@ export function endTurnUnlessQueued(stop: ClaudeStopTurn): boolean {
   });
   const held = holdForQueuedTurn(stop.transcriptWatcher, {
     // Ending a turn the screen already ended would warn falsely and re-arm a released turn-end
-    // hold. A turn that raw input, a later caller submission, or Claude itself started since, for
-    // a submit the handler allowed, is not this `Stop`'s turn.
+    // hold. A turn started since, by raw input, a later caller submission, or a submit the
+    // handler allowed, is not this `Stop`'s turn.
     ownsTurnEnd: () =>
       stop.submissionGenerationUnchanged() &&
       !callerTyped &&
