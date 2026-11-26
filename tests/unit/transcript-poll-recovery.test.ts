@@ -7,15 +7,18 @@
 import { expect, test, vi } from "vitest";
 import { recoverFromPollError } from "../../src/core/transcript/poll-recovery.ts";
 
+type Watcher = Parameters<typeof recoverFromPollError>[0];
+type PollErrorListener = NonNullable<Parameters<typeof recoverFromPollError>[1]>;
+
 const failure = new Error("scan failed");
 
-function watcherDouble(finish: () => void = () => undefined) {
-  return { finish: vi.fn(finish), stop: vi.fn() };
+function watcherDouble(finish: Watcher["finish"] = () => undefined) {
+  return { finish: vi.fn<Watcher["finish"]>(finish), stop: vi.fn<Watcher["stop"]>() };
 }
 
 test("C-CODEX-20 recovery finishes the watcher and routes the poll failure", () => {
   const watcher = watcherDouble();
-  const onPollError = vi.fn();
+  const onPollError = vi.fn<PollErrorListener>();
   recoverFromPollError(watcher, onPollError, failure);
   expect(watcher.finish).toHaveBeenCalledOnce();
   expect(watcher.stop).not.toHaveBeenCalled();
@@ -26,7 +29,7 @@ test("C-CODEX-20 a finish() that throws still stops the timer and routes the fai
   const watcher = watcherDouble(() => {
     throw new Error("drain listener failed");
   });
-  const onPollError = vi.fn();
+  const onPollError = vi.fn<PollErrorListener>();
   recoverFromPollError(watcher, onPollError, failure);
   expect(watcher.stop).toHaveBeenCalledOnce();
   expect(onPollError).toHaveBeenCalledWith(failure);
@@ -34,7 +37,7 @@ test("C-CODEX-20 a finish() that throws still stops the timer and routes the fai
 
 test("C-CODEX-20 a throwing or absent poll-error listener does not escape", () => {
   const watcher = watcherDouble();
-  const throwing = vi.fn(() => {
+  const throwing = vi.fn<PollErrorListener>(() => {
     throw new Error("diagnostic listener failed");
   });
   expect(() => recoverFromPollError(watcher, throwing, failure)).not.toThrow();
