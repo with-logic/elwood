@@ -8,7 +8,7 @@ import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import {
   claudeWorkspaceDisclosesHooks,
   claudeWorkspaceStrongestDisclosure,
-} from "../../src/core/trust/copy.ts";
+} from "../../src/core/trust/copy/claude-workspace.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { autotrustAnswer, autotrustView, failedClosed } from "../helpers/claude-autotrust.ts";

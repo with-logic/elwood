@@ -4,7 +4,7 @@ import type { WorkspaceTrustFacts } from "../../core/dialogs/types.ts";
 import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
 import type { SelectableOption } from "../../core/terminal-options.ts";
 import { isClaudeWorkspaceQuestionPrefix } from "../../core/trust/allowlist.ts";
-import { claudeWorkspaceDisclosesHooks } from "../../core/trust/copy.ts";
+import { claudeWorkspaceDisclosesHooks } from "../../core/trust/copy/claude-workspace.ts";
 import { hasTrustConversationBefore } from "../../core/trust/dialog.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
 import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";

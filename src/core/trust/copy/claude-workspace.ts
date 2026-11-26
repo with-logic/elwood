@@ -1,25 +1,11 @@
 /**
- * Recognized native trust-dialog explanations, excluding arbitrary intervening prose.
- * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26/C-CLAUDE-28/C-CLAUDE-29/C-CLAUDE-30. Claude copy is
- * captured in trust-responder-cursor, trust-bypass-permissions, claude-workspace-trust-hooks,
- * claude-workspace-load-rows, claude-workspace-permissions and claude-mcp-server-prompt tests, the
- * last four from `tests/fixtures/claude-2.1.329/trust/` and `tests/fixtures/claude-2.1.332/trust/`;
- * Codex directory/hooks were captured from 0.154.0.
- *
- * A prompt with known copy REQUIRES an explanatory sentence before any key is
- * written: a bare allowlisted header is a hold-only candidate, never a verified
- * dialog. Only version-variable rows (a count, a link label, a later sentence) and the rows a
- * folder's settings draw stay optional: Claude's load row, its hooks warning, and its
- * permissions warning, whose rules are the folder's own opaque text. Any other prose fails
- * closed.
+ * The copy of Claude's workspace trust prompt: its native explanation, then the rows a folder's
+ * settings draw, which are the load row, its hooks warning, and its permissions warning, whose
+ * rules are the folder's own opaque text. Any other prose fails closed. Also reads what verified
+ * copy discloses. Implements PRD §5.3/§5.4/C-CLAUDE-26/C-CLAUDE-29/C-CLAUDE-30; captured in the
+ * claude-workspace-trust-hooks, claude-workspace-load-rows, and claude-workspace-permissions
+ * tests from `tests/fixtures/claude-2.1.329/trust/` and `tests/fixtures/claude-2.1.332/trust/`.
  */
-
-/** Skill and plugin gates have no captured explanatory copy; none is accepted. */
-export const noTrustDescription = /^$/;
-
-/** The body of Claude's prompt for one new project MCP server, captured from 2.1.332. */
-export const claudeMcpDescription =
-  /^MCP servers may execute code or access system resources\. All tool calls require approval\. Learn more in the MCP documentation\.$/;
 
 // Whole sentences only, so a half-painted body never validates. Either sentence
 // proves the native body; 2.1.206 omits ", or work from your team".
@@ -163,23 +149,3 @@ function joinAsClaudeList(items: readonly string[]): string {
   if (items.length < 3) return items.join(" and ");
   return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
-
-// 2.1.268 shows the first sentence and the acceptance; 2.1.310 adds the sandbox sentence
-// between them and the security-guide link below. Only the first sentence is required.
-const bypassNoApproval = String.raw`In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands\.`;
-const bypassSandboxOnly = String.raw`This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged\.`;
-const bypassResponsibility = String.raw`By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode\.`;
-const securityGuide = String.raw`https://code\.claude\.com/docs/en/security`;
-export const claudeBypassDescription = new RegExp(
-  `^${bypassNoApproval}\\s*(?:${bypassSandboxOnly}\\s*)?(?:${bypassResponsibility}\\s*)?(?:${securityGuide})?$`,
-);
-
-export const codexWorkspaceDescription =
-  /^Working with untrusted contents comes with higher risk of prompt injection\. Trusting the directory allows project-local config, hooks, and exec policies to load\.$/;
-
-export const codexHooksDescription =
-  /^(?:\d+ hooks? (?:is|are) new or changed\.\s*)?Hooks can run outside the sandbox after you trust them\.$/;
-
-/** Codex 0.156.1 folder access copy, captured through the native PTY. */
-export const codexFolderAccessDescription =
-  /^Codex can read, edit, and run files here, subject to your permission settings\. Folder settings can run code automatically, even without a model request\. Continue only if you trust these files\. Your trust decision will be saved\.$/;
