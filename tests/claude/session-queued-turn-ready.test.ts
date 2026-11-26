@@ -51,6 +51,9 @@ async function stopWithQueuedMessage({ onStop, options, screening }: QueuedStop 
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"],
   });
+  // The screen shows the turn working until its `Stop`.
+  activity.pty.emitData(claudeWorking);
+  await vi.advanceTimersByTimeAsync(20);
   onStop?.(session);
   const stop = (prompt_id: string) =>
     activity.hook({ hook_event_name: "Stop", prompt_id, stop_hook_active: false });
@@ -149,10 +152,13 @@ test.each([
         ? new Promise<typeof answer>((resolve) => (screened = resolve))
         : undefined,
   };
-  const { session, append, stop, warnings } = await stopWithQueuedMessage({
+  const { session, pty, append, stop, warnings } = await stopWithQueuedMessage({
     options: { hooks },
     screening: true,
   });
+  // Claude idles while the handler screens: that idle composer is not the turn's end.
+  pty.emitData(claudeIdle);
+  await vi.advanceTimersByTimeAsync(20);
   await pastBound();
   await pastBound();
   expect(session.status).toBe("running");
