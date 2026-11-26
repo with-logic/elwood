@@ -40,6 +40,8 @@ test("C-ATTN-09 a whole key needs eight characters after sk-", () => {
   expect(unrecognizedStartupActivity("codex", "session", screen).text).toBe(
     "  sk-1234567 and sk-[redacted] here\n  sk-abcdefg\n\n  sk-[redacted]",
   );
+  // A short part ending the screen has no row to continue onto.
+  expect(unrecognizedStartupActivity("codex", "session", "  sk-abcdefg").text).toBe("  sk-abcdefg");
 });
 
 test("C-ATTN-09 redacts a key that wraps after its prefix onto rows of letters", () => {
