@@ -11,8 +11,12 @@
  * stay optional.
  */
 
-/** Skill/plugin/MCP gates have no captured explanatory copy; none is accepted. */
+/** Skill and plugin gates have no captured explanatory copy; none is accepted. */
 export const noTrustDescription = /^$/;
+
+/** The body of Claude's prompt for one new project MCP server, captured from 2.1.332. */
+export const claudeMcpDescription =
+  /^MCP servers may execute code or access system resources\. All tool calls require approval\. Learn more in the MCP documentation\.$/;
 
 // Whole sentences only, so a half-painted body never validates. Either sentence
 // proves the native body; 2.1.206 omits ", or work from your team".

@@ -7,6 +7,7 @@
 
 import {
   claudeBypassDescription,
+  claudeMcpDescription,
   claudeWorkspaceDescription,
   codexFolderAccessDescription,
   codexHooksDescription,
@@ -102,14 +103,14 @@ export const trustPromptAllowlist = [
     answerPolicy: "autotrust",
   },
   {
-    // Header "New MCP server found in this project"; the affirmative option is
-    // "Use this MCP server" (no yes/trust/continue word), needing a per-prompt
-    // accept — the generic yes-matcher would leave it wedged.
+    // Header "New MCP server found in this project: <name>", then its native body; the
+    // affirmative option is "Use this MCP server" (no yes/trust/continue word), needing a
+    // per-prompt accept — the generic yes-matcher would leave it wedged.
     id: "mcp_trust",
     agent: "claude",
     headerPattern:
       /^(?:New MCP server found in this project(?:: [\w.:-]+)?|do you trust (?:this|the) MCP server\?)(?:\s|$)/i,
-    descriptionPattern: noTrustDescription,
+    descriptionPattern: claudeMcpDescription,
     optionPattern: claudeMcpOptions,
     accept: useMcpOption,
     answerPolicy: "autotrust",
