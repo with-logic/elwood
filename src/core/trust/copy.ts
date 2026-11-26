@@ -1,8 +1,9 @@
 /**
  * Recognized native trust-dialog explanations, excluding arbitrary intervening prose.
- * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26. Claude copy is captured in
- * trust-responder-cursor, trust-bypass-permissions and claude-workspace-trust-hooks tests; Codex
- * directory/hooks were captured from 0.154.0.
+ * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26/C-CLAUDE-27. Claude copy is captured in
+ * trust-responder-cursor, trust-bypass-permissions, claude-workspace-trust-hooks and
+ * claude-workspace-load-rows tests, the last two from `tests/fixtures/claude-2.1.329/trust/` and
+ * `tests/fixtures/claude-2.1.332/trust/`; Codex directory/hooks were captured from 0.154.0.
  *
  * A prompt with known copy REQUIRES an explanatory sentence before any key is
  * written: a bare allowlisted header is a hold-only candidate, never a verified
@@ -17,34 +18,88 @@ export const noTrustDescription = /^$/;
 // proves the native body; 2.1.206 omits ", or work from your team".
 const likeYourOwn = String.raw`\(Like your own code, a well-known open source project(?:, or work from your team)?\)\. If not, take a moment to review what's in this folder first\.`;
 const ableTo = String.raw`Claude Code'll be able to read, edit, and execute files here\.`;
-// Claude that discloses hooks adds this pair after `ableTo` when the folder's project settings
-// configure commands that trusting runs (hooks, or a status line command). Both rows name the
-// same files: `.claude/settings.json`, `.claude/settings.local.json`, or both, in that order,
-// joined by "and". Only the pair, in order, counts: either row alone, or rows naming different
-// files, is unknown prose and fails closed.
-const hooksFiles = [
-  [String.raw`\.claude/settings\.json`],
-  [String.raw`\.claude/settings\.local\.json`],
-  [String.raw`\.claude/settings\.json`, String.raw`\.claude/settings\.local\.json`],
-];
-const hooksRows = `(?:${hooksFiles.map(hooksRowsNaming).join("|")})`;
-const ableToRows = `${ableTo}\\s*(?:${hooksRows}\\s*)?`;
+// Claude 2.1.326 and later add a load row after `ableTo`, naming what trusting the folder
+// loads: each project settings file that parses, `.claude/settings.json` then
+// `.claude/settings.local.json`, then `.mcp.json here or above (MCP servers)` when a folder
+// declares MCP servers. A settings file whose hooks, status line command, or helpers run
+// commands carries ` (runs commands)`, and Claude 2.1.329 and later put a hooks warning before the row, naming
+// exactly those files. Items join as Claude's lists do: `a`, `a and b`, `a, b, and c`. Only
+// these combinations verify. A file marked as running commands that the warning does not
+// name, either hooks row alone, or any other annotation or warning is unknown prose and fails
+// closed.
+type FileLoad = "absent" | "loads" | "runs";
+/** How each of `settingsFiles` appears in a load row, in its order. */
+type SettingsLoads = readonly [settings: FileLoad, local: FileLoad];
+type LoadDisclosure = { readonly settingsLoads: SettingsLoads; readonly mcpServers: boolean };
+const fileLoads: readonly FileLoad[] = ["absent", "loads", "runs"];
+const settingsFiles = [
+  String.raw`\.claude/settings\.json`,
+  String.raw`\.claude/settings\.local\.json`,
+] as const;
+const mcpServersItem = String.raw`\.mcp\.json here or above \(MCP servers\)`;
+const loadDisclosures: readonly LoadDisclosure[] = fileLoads
+  .flatMap((settings) => fileLoads.map((local): SettingsLoads => [settings, local]))
+  .flatMap((settingsLoads) => [false, true].map((mcpServers) => ({ settingsLoads, mcpServers })))
+  .filter(
+    ({ settingsLoads, mcpServers }) =>
+      mcpServers || settingsLoads.some((load) => load !== "absent"),
+  );
+const loadRows = rowsPattern(loadDisclosures);
+const ableToRows = `${ableTo}\\s*(?:${loadRows}\\s*)?`;
 export const claudeWorkspaceDescription = new RegExp(
   `^(?:${likeYourOwn}\\s*(?:${ableToRows})?|${ableToRows})(?:Security guide)?$`,
 );
-const hooksRowsPattern = new RegExp(hooksRows);
+
+/** What a verified load row says trusting the folder loads. */
+export type ClaudeWorkspaceDisclosure = "hooks" | "mcp_servers" | "settings";
+const hooksRows = new RegExp(
+  rowsPattern(loadDisclosures.filter(({ settingsLoads }) => settingsLoads.includes("runs"))),
+);
+// The first match wins, so a row naming several reports the most consequential (§5.3), and
+// `settings`, which every load row matches, means settings files with neither of the others.
+const disclosurePatterns: readonly (readonly [ClaudeWorkspaceDisclosure, RegExp])[] = [
+  ["hooks", hooksRows],
+  ["mcp_servers", new RegExp(rowsPattern(loadDisclosures.filter(({ mcpServers }) => mcpServers)))],
+  ["settings", new RegExp(loadRows)],
+];
+
+/**
+ * The most consequential thing verified Claude workspace copy says trusting the folder loads:
+ * settings files that run commands (hooks, a status line command, or helpers), then MCP
+ * servers, then settings files at all. Undefined for the plain prompt, which has no load row.
+ */
+export function claudeWorkspaceStrongestDisclosure(
+  copy: string,
+): ClaudeWorkspaceDisclosure | undefined {
+  return disclosurePatterns.find(([, pattern]) => pattern.test(copy))?.[0];
+}
 
 /** Whether verified Claude workspace copy discloses hooks, which trusting the folder runs. */
 export function claudeWorkspaceDisclosesHooks(copy: string): boolean {
-  return hooksRowsPattern.test(copy);
+  return hooksRows.test(copy);
 }
 
-/** The warning and load rows for hooks declared in `files`, each an escaped path. */
-function hooksRowsNaming(files: readonly string[]): string {
-  const warning = `⚠ This folder configures hooks that can run commands without asking, declared in ${files.join(" and ")}`;
-  const loads = files.map((file) => String.raw`${file} \(runs commands\)`);
-  const load = `Trusting this folder loads ${loads.join(" and ")}\\.`;
+/** Any of the rows for `disclosures`: the hooks warning, if a file runs commands, then the load row. */
+function rowsPattern(disclosures: readonly LoadDisclosure[]): string {
+  return `(?:${disclosures.map(disclosureRows).join("|")})`;
+}
+
+function disclosureRows({ settingsLoads, mcpServers }: LoadDisclosure): string {
+  const running = settingsFiles.filter((_, index) => settingsLoads[index] === "runs");
+  const items = settingsFiles.flatMap((file, index) => {
+    if (settingsLoads[index] === "absent") return [];
+    return [settingsLoads[index] === "runs" ? String.raw`${file} \(runs commands\)` : file];
+  });
+  const load = `Trusting this folder loads ${joinAsClaudeList([...items, ...(mcpServers ? [mcpServersItem] : [])])}\\.`;
+  if (running.length === 0) return load;
+  const warning = `⚠ This folder configures hooks that can run commands without asking, declared in ${joinAsClaudeList(running)}`;
   return `${warning}\\s*${load}`;
+}
+
+/** Claude's list join: `a`, `a and b`, `a, b, and c`. */
+function joinAsClaudeList(items: readonly string[]): string {
+  if (items.length < 3) return items.join(" and ");
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
 // 2.1.268 shows the first sentence and the acceptance; 2.1.310 adds the sandbox sentence

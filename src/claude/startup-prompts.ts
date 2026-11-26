@@ -2,7 +2,7 @@
  * Answers Claude first-party startup prompts that block embedded readiness:
  * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder)
  * and the browser-tools prompt. Implements PRD §5.1, §5.3, C-CLAUDE-10, C-CLAUDE-11,
- * C-CLAUDE-14, C-CLAUDE-16, and C-CLAUDE-26.
+ * C-CLAUDE-14, C-CLAUDE-16, C-CLAUDE-26, and C-CLAUDE-27.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";
@@ -15,7 +15,7 @@ import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/star
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
-import { type ProbeWorkspaceTrust, refuseProbeTrust } from "./probe-trust.ts";
+import { type ProbeTrustOptions, probeTrustPolicy } from "./probe-trust.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -32,12 +32,16 @@ export class ClaudeStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
     onWorkspaceTrustTakeover?: () => void,
-    probeTrust?: ProbeWorkspaceTrust,
+    probeTrust?: ProbeTrustOptions,
   ) {
     this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
+    const policy = probeTrust && probeTrustPolicy(probeTrust);
     this.trust = new TrustPromptResponder("claude", clearance, autotrust, {
-      onStateChange,
-      claimCallerOwnership: probeTrust && refuseProbeTrust(probeTrust),
+      onStateChange: () => {
+        policy?.onStateChange(this.trust.blockedPrompt);
+        onStateChange?.();
+      },
+      claimCallerOwnership: policy?.claim,
     });
   }
 

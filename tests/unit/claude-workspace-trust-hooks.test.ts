@@ -1,18 +1,17 @@
 /**
- * Claude's workspace prompt for a folder whose project settings have hooks: its exact hooks
- * rows, naming `.claude/settings.json`, `.claude/settings.local.json` or both, are native copy,
- * anything else in their place fails closed, and the model probe's policy leaves it to a human,
- * as it does every workspace prompt from a Claude that cannot disclose hooks (PRD §5.3, §5.4,
- * C-CLAUDE-26).
+ * Claude's workspace prompt for a folder whose project settings have hooks: the hooks warning
+ * before its load row, naming exactly the files the row marks ` (runs commands)`, is native
+ * copy, anything else in its place fails closed, and the model probe's policy leaves it to a
+ * human, as it does every workspace prompt from a Claude that cannot disclose hooks (PRD §5.3,
+ * §5.4, C-CLAUDE-26, C-CLAUDE-27).
  */
 import { expect, test, vi } from "vitest";
-import type { ProbeWorkspaceTrust } from "../../src/claude/probe-trust.ts";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
-import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import { claudeWorkspaceDisclosesHooks } from "../../src/core/trust/copy.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { probeOutcome, refusedOutcome } from "../helpers/claude-probe-responder.ts";
 import {
   claudeHooksPrompt,
   claudeHooksPromptCaptures,
@@ -114,38 +113,6 @@ test("C-CLAUDE-26 only the pair of hooks rows declares hooks", () => {
   expect(claudeWorkspaceDisclosesHooks(ableTo)).toBe(false);
 });
 
-/** What a responder with the model probe's trust policy does with `frame`. */
-function probeOutcome(frame: string, canDiscloseHooks = true) {
-  const refused = vi.fn();
-  const policy: ProbeWorkspaceTrust = { canDiscloseHooks, onRefused: refused };
-  const responder = new ClaudeStartupPromptResponder(
-    true,
-    undefined,
-    claudeTrustClearance,
-    undefined,
-    policy,
-  );
-  const writes: string[] = [];
-  const outcomes = responder.handle(
-    frame,
-    (input) => {
-      writes.push(input);
-    },
-    () => frame,
-  );
-  const owner = responder.humanOwnedPrompt;
-  responder.dispose();
-  return { outcomes, writes, refusals: refused.mock.calls.map(([reason]) => reason), owner };
-}
-
-/** Left to a human: nothing is written, and the refusal is reported once, with `reason`. */
-const refusedOutcome = (reason: string) => ({
-  outcomes: [],
-  writes: [],
-  refusals: [reason],
-  owner: "workspace_trust",
-});
-
 test.each<readonly [string, string]>([
   ["wrapped at 100 columns", wrapped],
   ["unwrapped", wide],
@@ -168,20 +135,9 @@ test("C-CLAUDE-26 the probe leaves every workspace prompt to a human when Claude
 });
 
 test.each([
-  ["skill", "Load this skill?\n1. Yes, load this skill\n2. No", "skill_trust"],
-  ["plugin", "Do you trust the plugin?\n1. Yes, trust it\n2. No", "plugin_trust"],
-])("C-CLAUDE-26 the probe still answers a %s prompt from a Claude that cannot disclose hooks", (_, frame, prompt) => {
-  // Autotrust began its numbered answer; the policy reported no refusal.
-  expect(probeOutcome(frame, false)).toMatchObject({
-    outcomes: [{ outcome: { kind: "attempted", prompt, input: "1" } }],
-    refusals: [],
-  });
-});
-
-test.each([
   true,
   false,
-])("C-CLAUDE-26 the probe ignores a workspace prompt whose copy is not verified (can disclose: %s)", (canDiscloseHooks) => {
+])("C-CLAUDE-26 the probe does not refuse a workspace prompt whose copy is not verified before its budget runs out (can disclose: %s)", (canDiscloseHooks) => {
   const frame = wide.replace(` ${load}`, ` ${load}\n ${extra}`);
   expect(probeOutcome(frame, canDiscloseHooks)).toMatchObject({
     outcomes: [],

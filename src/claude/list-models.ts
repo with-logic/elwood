@@ -17,9 +17,9 @@ import { startClaudeWithId } from "./session/index.ts";
  * the probe), lists its models, and always cleans up — the session AND its owned
  * temp state directory, even if startup fails after allocating it. The picker is
  * opened and cancelled only, so the user's saved default stays untouched. The implied
- * autotrust never approves a workspace prompt for a folder whose hooks could run: one that
- * discloses hooks, or any from a Claude that cannot disclose them. The probe rejects instead
- * (§5.3, C-CLAUDE-26).
+ * autotrust approves only the plain workspace prompt, from a Claude that discloses hooks; it
+ * rejects any prompt whose answer could run the folder's code instead (§5.3, C-CLAUDE-26,
+ * C-CLAUDE-27).
  */
 export function listClaudeModels(options: ListModelsOptions): Promise<readonly AgentModelOption[]> {
   const state = ownedProbeStateDir("claude", options.stateDir);
@@ -42,7 +42,7 @@ export function listClaudeModels(options: ListModelsOptions): Promise<readonly A
           },
           randomUUID(),
           undefined,
-          (reason) => refuse(workspaceTrustRefusal(reason)),
+          (refusal) => refuse(probeRefusalError(refusal)),
         ),
       removeState: state.remove,
     },
@@ -50,15 +50,52 @@ export function listClaudeModels(options: ListModelsOptions): Promise<readonly A
   );
 }
 
-const refusalReasons: Readonly<Record<ProbeTrustRefusal, string>> = {
-  hooks_disclosed: "Claude's workspace trust prompt says this folder has hooks",
-  hooks_undisclosable: `Claude older than ${claudeHooksDisclosureVersion}, or of an unknown version, cannot say whether this folder has hooks`,
+/** What in the folder the probe declined to trust, or that it could not verify the prompt (§10). */
+type ProbeRefusalCategory =
+  | "workspace_hooks"
+  | "workspace_mcp_servers"
+  | "workspace_settings"
+  | "workspace_plugins"
+  | "workspace_skills"
+  | "workspace_unverified";
+
+/** Each refusal's typed category and why the probe refused (§5.3, §10). */
+const refusals: Readonly<
+  Record<ProbeTrustRefusal, readonly [category: ProbeRefusalCategory, reason: string]>
+> = {
+  hooks_disclosed: [
+    "workspace_hooks",
+    "Claude's workspace trust prompt says this folder has hooks",
+  ],
+  hooks_undisclosable: [
+    "workspace_hooks",
+    `Claude older than ${claudeHooksDisclosureVersion}, or of an unknown version, shows a workspace trust prompt that cannot say whether this folder has hooks`,
+  ],
+  mcp_servers_disclosed: [
+    "workspace_mcp_servers",
+    "Claude's workspace trust prompt says this folder declares MCP servers",
+  ],
+  settings_disclosed: [
+    "workspace_settings",
+    "Claude's workspace trust prompt says this folder has project settings, which can enable plugins that run commands",
+  ],
+  mcp_server_prompt: [
+    "workspace_mcp_servers",
+    "Claude asks to use an MCP server this folder declares",
+  ],
+  plugin_prompt: ["workspace_plugins", "Claude asks to trust a plugin"],
+  skill_prompt: ["workspace_skills", "Claude asks to load a skill"],
+  workspace_unverified: [
+    "workspace_unverified",
+    "Elwood cannot verify Claude's workspace trust prompt",
+  ],
 };
 
-function workspaceTrustRefusal(reason: ProbeTrustRefusal): ElwoodError {
+function probeRefusalError(refusal: ProbeTrustRefusal): ElwoodError {
+  const [category, reason] = refusals[refusal];
   return new ElwoodError(
     "claude_start_failed",
-    `${refusalReasons[reason]}; listing models does not approve its workspace trust prompt. List models from a folder Claude already trusts.`,
-    { category: "workspace_hooks" },
+    `${reason}; listing models does not answer that prompt. List models from a folder Claude already trusts, with no trust prompts left to answer.`,
+    { category },
   );
 }
