@@ -112,8 +112,11 @@ export type ClaudeStopTurn = {
   readonly screening: Pick<SubmitScreening, "active" | "mark" | "allowedSince">;
 };
 
-/** Ends the turn an unblocked, unsuperseded `Stop` reports, unless Claude may run queued messages. */
-export function endTurnUnlessQueued(stop: ClaudeStopTurn): void {
+/**
+ * Ends the turn an unblocked, unsuperseded `Stop` reports, unless Claude may run queued messages.
+ * Returns whether the `Stop` holds for them.
+ */
+export function endTurnUnlessQueued(stop: ClaudeStopTurn): boolean {
   const { session, observation, screening } = stop;
   const submitHookTurnEnded = () => void session.submitEvidence("hook_turn_ended");
   const statusUnchanged = statusUnchangedSinceNow(session);
@@ -142,9 +145,10 @@ export function endTurnUnlessQueued(stop: ClaudeStopTurn): void {
     closing: session.closing.signal,
     observation,
   });
-  if (held) return;
+  if (held) return true;
   stopWatchingInput();
   observation.run("lifecycle", submitHookTurnEnded);
+  return false;
 }
 
 /** After an unblocked `Stop`: ends its turn unless a newer submission or a queued turn supersedes it. */
@@ -152,7 +156,7 @@ export function endUnblockedStop(
   stop: Omit<ClaudeStopTurn, "session" | "observation"> & {
     readonly observation: HookObservation;
     readonly getSession: () => ClaudeStopTurn["session"] | undefined;
-    readonly getTurnWatcher: () => Pick<TurnStateWatcher, "arm">;
+    readonly getTurnWatcher: () => Pick<TurnStateWatcher, "arm" | "endedByHook">;
   },
 ): void {
   stop.observation.run("transcript", () => stop.transcriptWatcher.scan());
@@ -161,8 +165,10 @@ export function endUnblockedStop(
   // Guidance may steer the current turn; every physical submission supersedes this Stop.
   const session = stop.getSession();
   if (!stop.submissionGenerationUnchanged()) return;
-  stop.getTurnWatcher().arm();
-  if (session) endTurnUnlessQueued({ ...stop, session });
+  const turnWatcher = stop.getTurnWatcher();
+  turnWatcher.arm();
+  // Claude's composer idles while a handler screens a held message: that is not a turn's end.
+  if (session && endTurnUnlessQueued({ ...stop, session })) turnWatcher.endedByHook();
 }
 
 /** Whether no status transition was applied after now. An evicted entry counts as a change. */

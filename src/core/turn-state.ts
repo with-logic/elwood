@@ -65,6 +65,11 @@ export class TurnStateWatcher {
     this.quietStreak = 0;
   }
 
+  /** A held `Stop` ended the rendered turn. Only work rendered after it can end another (C-HOOK-24). */
+  endedByHook(): void {
+    this.running = false;
+  }
+
   /** Retire earlier rendered work when a queue-backed physical input is submitted. */
   submitted(hasFreshFrame: () => boolean, ignoreRetainedInterrupt: boolean): void {
     this.running = false;
