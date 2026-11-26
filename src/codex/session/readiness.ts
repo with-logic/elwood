@@ -1,7 +1,7 @@
 /**
  * Codex's initial-readiness gate: its deadline needs the configured composer (the native
  * status footer, whose effort label, for a session that requested an effort Codex labels, is
- * no longer `default` once Codex applied it, or by the backstop at the latest), and missing
+ * no longer `default` once Codex applied it, or when the backstop falls), and missing
  * evidence at the backstop is reported as a content-free warning (PRD §5.3, §5.7, C-API-28).
  */
 import { runContained } from "../../core/contained.ts";
@@ -10,7 +10,7 @@ import type { InitialReadinessWarning } from "../../core/warnings/lifecycle.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import { initialBackstopMs } from "../../runtime/readiness/initial-ready.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
-import { codexComposerConfigured } from "../screen/clearance.ts";
+import { codexReadinessEvidence } from "../screen/clearance.ts";
 import { codexFooterShowsEffort } from "../screen/footer.ts";
 import type { CodexEventMap } from "./types.ts";
 
@@ -24,27 +24,46 @@ export type CodexReadinessLaunch = {
 /**
  * The configured-composer check for a session that requested `effort`. Once a footer shows
  * it, Codex has applied its configuration: a later label, such as a pre-ready `setModel` to an
- * effort labelled `default`, cannot revoke that. The wait for the label ends by the backstop,
- * which falls `initialBackstopMs` after the first frame, so a footer that never shows it
- * degrades to the footer alone (`onLapse`) and never holds readiness for good.
+ * effort labelled `default`, cannot revoke that. The wait for the label ends when the
+ * initial-readiness backstop falls, so a footer that never shows it degrades to the footer
+ * alone (`onLapse`) and never holds readiness for good.
  */
 export function codexConfiguredCheck(
   effort: CodexReasoningEffort | undefined,
   onLapse: () => void,
-): (frame: string, cols?: number) => boolean {
-  const lapsesAt = Date.now() + initialBackstopMs;
+) {
+  let lapse: ReturnType<typeof setTimeout> | undefined;
+  let lapsed = false;
+  let stopped = false;
   let waitOver = false;
-  return (frame, cols) => {
-    const painted = codexComposerConfigured(frame, cols);
-    if (waitOver || !painted) return painted;
-    if (codexComposerConfigured(frame, cols, effort)) {
-      waitOver = codexFooterShowsEffort(effort);
+  return {
+    /**
+     * Start the wait's bound with the shared deadline, on the first rendered frame. Armed
+     * just before the backstop and with its delay, the lapse falls first, so the backstop
+     * judges the footer alone.
+     */
+    arm: () => {
+      if (stopped) return;
+      lapse ??= setTimeout(() => {
+        lapsed = true;
+      }, initialBackstopMs);
+    },
+    stop: () => {
+      stopped = true;
+      clearTimeout(lapse);
+    },
+    configured: (frame: string, cols?: number): boolean => {
+      const painted = codexReadinessEvidence(frame, cols);
+      if (waitOver || !painted) return painted;
+      if (codexReadinessEvidence(frame, cols, effort)) {
+        waitOver = codexFooterShowsEffort(effort);
+        return true;
+      }
+      if (!lapsed) return false;
+      waitOver = true;
+      runContained(onLapse);
       return true;
-    }
-    if (Date.now() < lapsesAt) return false;
-    waitOver = true;
-    runContained(onLapse);
-    return true;
+    },
   };
 }
 
@@ -67,10 +86,33 @@ export function createCodexReadinessGate(
         raw: "codex_effort_unconfirmed",
       },
     ]);
-  return createStartupReadinessGate(onReady, resumed, {
-    session: { agent: "codex", elwoodSessionId },
-    configured: codexConfiguredCheck(options.reasoningEffort, onLapse),
-    warnings,
-    events,
-  });
+  const check = codexConfiguredCheck(options.reasoningEffort, onLapse);
+  const gate = createStartupReadinessGate(
+    () => {
+      onReady();
+      check.stop();
+    },
+    resumed,
+    {
+      session: { agent: "codex", elwoodSessionId },
+      configured: check.configured,
+      warnings,
+      events,
+    },
+  );
+  const { ready } = gate;
+  return {
+    ...gate,
+    ready: {
+      ...ready,
+      armDeadline: () => {
+        check.arm();
+        ready.armDeadline();
+      },
+      cancel: () => {
+        check.stop();
+        ready.cancel();
+      },
+    },
+  };
 }

@@ -129,7 +129,7 @@ launches, and every one of those 24 reported `ready` at 10.0 s, onto a screen
 showing the boot composer without a footer. The other 8 painted their gate at
 8.9 to 9.0 s and readied after it, on footed composers. Unloaded, the gate came
 3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
-composer with its model footer (`codexComposerConfigured`,
+composer with its model footer (`codexReadinessEvidence`,
 `src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
 gate delay, reports missing evidence without releasing readiness or queued
 input. This avoids typing into an unrecognized late gate. Fixtures:

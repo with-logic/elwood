@@ -41,7 +41,7 @@ async function waitForScreen(screen: () => string, check: (text: string) => bool
 }
 
 test("C-E2E-34 Codex reaches ready only once it shows the effort it applied, so Plan mode survives", {
-  skip: skipIf(skipReason("codex")) || pinnedSkip,
+  skip: skipIf(skipReason("codex"), pinnedSkip),
   timeout: 180_000,
 }, async (t) => {
   const proxy = await startDelayingProxy(connectionHoldMs);
@@ -72,6 +72,10 @@ test("C-E2E-34 Codex reaches ready only once it shows the effort it applied, so 
     clearInterval(polling);
     const failures = proxy.failures().join("; ") || "none";
     const network = `${proxy.openedTunnelCount()} tunnels opened, failures: ${failures}`;
+    assert.ok(
+      proxy.openedTunnelCount() > 0,
+      `Codex connected through the delaying proxy (${network})`,
+    );
     const applied = footer(screen());
     assert.ok(
       applied?.startsWith(`${questionCodexModel} ${effort}`),

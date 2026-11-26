@@ -121,7 +121,8 @@ export function codexComposerRow(
 }
 
 /**
- * Codex paints its status footer beneath the composer once its model catalog loads. The
+ * Whether the frame shows Codex's readiness evidence: the composer with Codex's status footer
+ * beneath it. Codex paints that footer once its model catalog loads. The
  * composer it paints while booting has none, and under load its directory-trust gate can
  * follow seconds later, so readiness waits for this footer (C-API-28). Codex 0.172 paints
  * the footer before it applies the session's configuration, which discards a mode or model
@@ -131,7 +132,7 @@ export function codexComposerRow(
  * configuration yet. A wrapped footer counts only with the width of the terminal that drew
  * the frame (C-CODEX-26).
  */
-export function codexComposerConfigured(
+export function codexReadinessEvidence(
   frame: string,
   cols = unknownCols,
   requestedEffort?: CodexReasoningEffort,

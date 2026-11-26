@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codexComposerConfigured } from "../../src/codex/screen/clearance.ts";
+import { codexReadinessEvidence } from "../../src/codex/screen/clearance.ts";
 import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { probeCommandTimeoutMs, probeLaunchTimeoutMs } from "../../src/runtime/probe/index.ts";
 import { sendWithin, waitForCondition } from "./bounded-steps.ts";
@@ -116,7 +116,7 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     let replaying = true;
     resumedSession.on("terminal:data", () => {
       const frame = resumedSession.terminal.snapshot();
-      if (configuredComposerAt === undefined && codexComposerConfigured(frame.text, frame.cols))
+      if (configuredComposerAt === undefined && codexReadinessEvidence(frame.text, frame.cols))
         configuredComposerAt = replaying ? startedAt : Date.now();
     });
     replaying = false;

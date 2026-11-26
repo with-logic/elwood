@@ -16,32 +16,48 @@ afterEach(() => {
 });
 
 test("C-API-28 without a requested effort the default footer counts", () => {
-  const check = codexConfiguredCheck(undefined, noLapse);
-  expect(check(effortDefault, 140)).toBe(true);
-  expect(check(unpainted, 140)).toBe(false);
+  const { configured } = codexConfiguredCheck(undefined, noLapse);
+  expect(configured(effortDefault, 140)).toBe(true);
+  expect(configured(unpainted, 140)).toBe(false);
 });
 
 test("C-API-28 once Codex showed the requested effort a default label cannot revoke it", () => {
-  const check = codexConfiguredCheck("low", noLapse);
-  expect(check(effortDefault, 140)).toBe(false);
-  expect(check(effortLow, 140)).toBe(true);
-  expect(check(effortDefault, 140)).toBe(true);
-  expect(check(unpainted, 140)).toBe(false);
+  const { configured } = codexConfiguredCheck("low", noLapse);
+  expect(configured(effortDefault, 140)).toBe(false);
+  expect(configured(effortLow, 140)).toBe(true);
+  expect(configured(effortDefault, 140)).toBe(true);
+  expect(configured(unpainted, 140)).toBe(false);
 });
 
-test("C-API-28 by the backstop a footer that never shows the effort counts, with a warning", () => {
+test("C-API-28 the backstop's delay after arming lets a footer that never shows the effort count", () => {
   vi.useFakeTimers();
   let lapses = 0;
   const check = codexConfiguredCheck("low", () => {
     lapses += 1;
     throw new Error("a throwing warning sink cannot hold readiness");
   });
+  // Before the first frame arms it, no time counts toward the lapse.
+  vi.advanceTimersByTime(55_000);
+  expect(check.configured(effortDefault, 140)).toBe(false);
+  check.arm();
+  check.arm();
   vi.advanceTimersByTime(59_999);
-  expect(check(effortDefault, 140)).toBe(false);
+  expect(check.configured(effortDefault, 140)).toBe(false);
   vi.advanceTimersByTime(1);
-  expect(check(unpainted, 140)).toBe(false);
+  expect(check.configured(unpainted, 140)).toBe(false);
   expect(lapses).toBe(0);
-  expect(check(effortDefault, 140)).toBe(true);
-  expect(check(effortDefault, 140)).toBe(true);
+  expect(check.configured(effortDefault, 140)).toBe(true);
+  expect(check.configured(effortDefault, 140)).toBe(true);
   expect(lapses).toBe(1);
+});
+
+test("C-API-28 a stopped check never lapses", () => {
+  vi.useFakeTimers();
+  const check = codexConfiguredCheck("low", noLapse);
+  check.arm();
+  check.stop();
+  check.arm();
+  vi.advanceTimersByTime(120_000);
+  expect(vi.getTimerCount()).toBe(0);
+  expect(check.configured(effortDefault, 140)).toBe(false);
 });

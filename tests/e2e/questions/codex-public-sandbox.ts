@@ -3,7 +3,12 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
-import { CodexSession, type ElwoodQuestionRequest, type TerminalSize } from "../../../src/index.ts";
+import {
+  CodexSession,
+  type CodexSessionOptions,
+  type ElwoodQuestionRequest,
+  type TerminalSize,
+} from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
@@ -38,7 +43,7 @@ export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: stri
 }
 
 /** The effort the question proofs request. */
-export const publicCodexQuestionEffort = "low";
+const publicCodexQuestionEffort = "low";
 
 /** Options for a session on the pinned Codex and model inside `sandbox`, with no effort. */
 export function publicCodexSessionOptions(
@@ -54,7 +59,7 @@ export function publicCodexSessionOptions(
     sandbox: "read-only",
     approvalPolicy: "never",
     initialSize,
-  } as const;
+  } as const satisfies CodexSessionOptions;
 }
 
 /** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default;
