@@ -34,7 +34,7 @@ const editFrame = (from: string, to: string) => {
 // columns, and wraps onto one more row at 60 and 50 and onto three at 40.
 test.each([
   80, 60, 50, 40,
-])("C-QUESTION-04 a modal question matches with its descriptions wrapped at %i columns", (cols) => {
+])("C-QUESTION-04 a modal question matches with its descriptions as drawn at %i columns", (cols) => {
   const view = questionView(nativeFrame(`modal-footer-wrapped-${cols}.json`, "0.172.0"));
   expect(view).toMatchObject({ kind: "blocking", count: 3, index: 0, selected: 0 });
   expect(matchesQuestion(view!, color)).toBe(true);

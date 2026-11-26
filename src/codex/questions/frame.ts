@@ -138,8 +138,7 @@ function questionCursor(
 // An option row, trimmed: its number, then its label and any description, folded across rows.
 const numberedOption = /^(?:› )?(\d+)\. ([\s\S]*)$/;
 export function matchesQuestion(view: QuestionView, question: QuestionDefinition): boolean {
-  // Read the rows as drawn: a wrapped option description is known by its indentation.
-  const body = view.rawBody.map((line) => line.trim());
+  const body = view.body;
   const content = body.filter((line) => line.length > 0);
   if (
     view.kind === "queued" &&
@@ -157,6 +156,7 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
   const end = block.findIndex((line) => line.length === 0);
   const optionBlockStart = promptRow + 1 + start;
   const optionBlockEnd = optionBlockStart + (end < 0 ? block.length : end);
+  // Read the option rows as drawn: a wrapped option description is known by its indentation.
   const optionBlock = view.rawBody.slice(optionBlockStart, optionBlockEnd);
   const rows = foldOptionRows(optionBlock).map((line) => numberedOption.exec(line.trim()));
   const editingOther =
