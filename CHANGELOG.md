@@ -51,6 +51,13 @@ back each entry are listed in `prd/14-conformance.md`.
   after `ready` while a user `Stop` hook still runs starts a new turn and holds
   nothing, although Claude reuses the previous turn's prompt ID for it.
 
+- `stop()`, `kill()` and `teardown()` no longer reject with `termination_failed`, leaving
+  a detached process group running, when one of the group's recorded processes started a
+  child just before cleanup read the process table. Elwood could not verify the child's
+  recent start time, so it refused to signal the group. A verified member of the same
+  group, alive in that read, now vouches for it: `setpgid` only lets a process join a
+  group in its own session, and the live member keeps the group ID from being reused.
+
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed
   before Elwood saw the empty composer. This was most likely in auto mode. Elwood

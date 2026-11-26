@@ -1,5 +1,6 @@
 /** Private original-group and detached-helper records (PRD §5.3/§9.4, C-LIFE-10).
- * Frozen identities exclude replacements; failed observations retain uncertainty.
+ * Frozen identities exclude replacements; failed observations retain uncertainty. An
+ * ambiguous member blocks its group only where no verified member in the same read vouches.
  */
 
 import {
@@ -104,17 +105,22 @@ export class DescendantRecord {
     this.unknownLeaderGroup = leaderPid;
   }
 
-  /** Ambiguous identities and unattributable original-group members cannot authorize cleanup. */
+  /**
+   * Unvouched ambiguous identities and unattributable original-group members cannot authorize
+   * cleanup. A verified member alive in `table` vouches for its group: `setpgid` only lets a
+   * process join a group in its own session, and a live member pins the pgid against reuse.
+   */
   unsafeSurvivorGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
     if (this.leaderGroup !== undefined) {
       const members = table.filter((row) => !row.zombie && row.pgid === this.leaderGroup);
       if (members.length > 0 && !members.some((row) => this.identities.has(identity(row))))
         this.unknownLeaderGroup = this.leaderGroup;
     }
+    const survivors = this.survivors(table);
+    const isAmbiguous = (row: ProcessEntry) => this.ambiguous.has(identity(row));
+    const vouched = new Set(survivors.filter((row) => !isAmbiguous(row)).map((row) => row.pgid));
     const unsafe = new Set(
-      this.survivors(table)
-        .filter((row) => this.ambiguous.has(identity(row)))
-        .map((row) => row.pgid),
+      survivors.filter((row) => isAmbiguous(row) && !vouched.has(row.pgid)).map((row) => row.pgid),
     );
     if (this.unknownLeaderGroup !== undefined) unsafe.add(this.unknownLeaderGroup);
     return unsafe;
