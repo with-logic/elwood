@@ -1,6 +1,6 @@
 /**
  * A local HTTPS `CONNECT` proxy that holds every tunnel for a fixed time before opening it,
- * standing in for a slow network in front of a real CLI. Supports C-E2E-34.
+ * standing in for a slow network in front of a real CLI. Supports C-E2E-34 and C-E2E-37.
  */
 import { createServer } from "node:http";
 import { connect } from "node:net";

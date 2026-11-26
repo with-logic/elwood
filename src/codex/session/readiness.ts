@@ -1,7 +1,7 @@
 /**
  * Codex's initial-readiness gate: its deadline needs the configured composer (the native
  * status footer, whose effort label, for a session that requested an effort Codex labels, is
- * no longer `default` once Codex applied it, or when the backstop falls), and missing
+ * no longer `default` once Codex applied it, or any footer from 50 seconds after launch), and missing
  * evidence at the backstop is reported as a content-free warning (PRD §5.3, §5.7, C-API-28).
  * Its header drawn alone, its boot composer, its resume placeholder and its footer before it
  * shows the requested effort are startup screens Codex draws before that composer, not
@@ -9,10 +9,12 @@
  */
 import { runContained } from "../../core/contained.ts";
 import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
+import { defaultWaitTimeoutMs } from "../../core/session-wait.ts";
+import { deadlineClock } from "../../core/timers.ts";
 import type { InitialReadinessWarning } from "../../core/warnings/lifecycle.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import { createNativeBootFrameMatcher } from "../../runtime/readiness/boot-frame.ts";
-import { initialBackstopMs } from "../../runtime/readiness/initial-ready.ts";
+import { initialDeadlineMs } from "../../runtime/readiness/initial-ready.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 import { codexReadinessEvidence } from "../screen/clearance.ts";
 import { codexFooterShowsEffort } from "../screen/footer.ts";
@@ -29,32 +31,61 @@ export type CodexReadinessLaunch = {
   readonly options: { readonly reasoningEffort?: CodexReasoningEffort | undefined };
 };
 
+/** Room left for a render still in flight before a default host wait can expire. */
+const hostWaitHeadroomMs = 10_000;
+
 /**
- * The configured-composer check for a session that requested `effort`. Once a footer shows
- * it, Codex has applied its configuration: a later label, such as a pre-ready `setModel` to an
- * effort labelled `default`, cannot revoke that. The wait for the label ends when the
- * initial-readiness backstop falls, so a footer that never shows it degrades to the footer
- * alone (`onLapse`) and never holds readiness for good.
+ * How long after launch the wait for a requested effort's label lasts. A host can wait on a
+ * session only once it exists, after launch, so a ready released then comes at least
+ * `hostWaitHeadroomMs` before its default `waitForStatus` timeout can end. Readiness also
+ * needs the deadline, `initialDeadlineMs` after the first frame, so that holds when Codex
+ * drew its first frame within 40 seconds of launch (C-API-28).
+ */
+const codexEffortWaitFromLaunchMs = defaultWaitTimeoutMs - hostWaitHeadroomMs;
+
+/** What the check reports as the wait for the effort's label ends. */
+export type CodexEffortWaitEvents = {
+  /** The wait ended: re-judge the current frame, since an idle Codex does not repaint. */
+  readonly onWaitEnded: () => void;
+  /** A `default` footer counted once the wait ended: the effort was never confirmed. */
+  readonly onUnconfirmed: () => void;
+};
+
+/**
+ * The configured-composer check for a session that requested `effort`. Make it at launch: the
+ * wait's bound counts from this call, on the monotonic clock. Once a footer shows the effort,
+ * Codex has applied its configuration: a later label, such as a pre-ready `setModel` to an
+ * effort labelled `default`, cannot revoke that. The wait for the label ends
+ * `codexEffortWaitFromLaunchMs` after launch, but never before the deadline, so a footer that
+ * never shows it degrades to the footer alone and never holds readiness for good, and the
+ * write hold and readiness release on it together.
  */
 export function codexConfiguredCheck(
   effort: CodexReasoningEffort | undefined,
-  onLapse: () => void,
+  { onWaitEnded, onUnconfirmed }: CodexEffortWaitEvents,
 ) {
+  const launchedAt = deadlineClock.now();
   let lapse: ReturnType<typeof setTimeout> | undefined;
   let lapsed = false;
   let stopped = false;
   let waitOver = false;
   return {
     /**
-     * Start the wait's bound with the shared deadline, on the first rendered frame. Armed
-     * just before the backstop and with its delay, the lapse falls first, so the backstop
-     * judges the footer alone.
+     * Start the wait's bound with the shared deadline, on the first rendered frame, so only a
+     * session that drew one holds the timer. It falls `codexEffortWaitFromLaunchMs` after
+     * launch, or with the deadline when that frame comes more than 40 seconds after launch.
      */
     arm: () => {
-      if (stopped) return;
-      lapse ??= setTimeout(() => {
-        lapsed = true;
-      }, initialBackstopMs);
+      // Without an effort Codex labels, the footer counts as soon as it is drawn.
+      if (stopped || !codexFooterShowsEffort(effort)) return;
+      const fromLaunch = launchedAt + codexEffortWaitFromLaunchMs - deadlineClock.now();
+      lapse ??= setTimeout(
+        () => {
+          lapsed = true;
+          runContained(onWaitEnded);
+        },
+        Math.max(initialDeadlineMs, fromLaunch),
+      );
     },
     stop: () => {
       stopped = true;
@@ -69,7 +100,7 @@ export function codexConfiguredCheck(
       }
       if (!lapsed) return false;
       waitOver = true;
-      runContained(onLapse);
+      runContained(onUnconfirmed);
       return true;
     },
   };
@@ -82,7 +113,7 @@ export function createCodexReadinessGate(
   events: Pick<TypedEmitter<CodexEventMap>, "emit">,
 ) {
   const { elwoodSessionId } = record;
-  const onLapse = () =>
+  const emitEffortUnconfirmed = () =>
     warnings.emitWarnings([
       {
         elwoodSessionId,
@@ -90,11 +121,14 @@ export function createCodexReadinessGate(
         source: "lifecycle",
         code: "codex_effort_unconfirmed",
         severity: "warning",
-        message: `Codex did not show the requested reasoning effort within ${initialBackstopMs / 1_000} seconds; readiness was released on its status footer, and a mode or model picked before Codex applies its configuration can be discarded.`,
+        message: `Codex did not show the requested reasoning effort within ${codexEffortWaitFromLaunchMs / 1_000} seconds of launch; readiness was released on its status footer, and a mode or model picked before Codex applies its configuration can be discarded.`,
         raw: "codex_effort_unconfirmed",
       },
     ]);
-  const check = codexConfiguredCheck(options.reasoningEffort, onLapse);
+  const check = codexConfiguredCheck(options.reasoningEffort, {
+    onUnconfirmed: emitEffortUnconfirmed,
+    onWaitEnded: () => gate.rereadFrame(),
+  });
   const gate = createStartupReadinessGate(
     () => {
       onReady();
