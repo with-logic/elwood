@@ -4,6 +4,7 @@
  */
 
 import { afterEach, expect, test } from "vitest";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { resetFakes } from "./helpers.ts";
 import { closing, listed, newerOffer, offer, openCodex, summary } from "./update-dialog-fixture.ts";
 
@@ -37,19 +38,34 @@ test("C-ATTN-10 a different offer replaces the listed one with new IDs", async (
   });
 });
 
-test("C-ATTN-10 unsettled output keeps the request, and a settled unknown screen ends it", async () => {
+test("C-ATTN-10 unsettled output keeps the request, and a settled banner without choices ends it", async () => {
   const { session, events, show, id, pty } = await listed();
   await closing(session, async () => {
     pty.emitData("\u001b[?2026h");
     expect((await session.listDialogs()).map((request) => request.id)).toEqual([id]);
     pty.emitData("\u001b[?2026l");
-    await show("Something else entirely");
+    await show(offer.split("\n").slice(0, 3).join("\n"));
     expect(await session.listDialogs()).toEqual([]);
     await expect
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
         ["closed", "unavailable"],
+      ]);
+  });
+});
+
+test("C-ATTN-10 a settled screen without the banner clears the request, even before a composer", async () => {
+  const { session, events, show, id } = await listed();
+  await closing(session, async () => {
+    // Codex 0.172.0's first screen after a skip on a start: its header alone.
+    await show(capturedFrame("codex-0.172.0/update/start-boot-partial"));
+    expect(await session.listDialogs()).toEqual([]);
+    await expect
+      .poll(() => summary(events))
+      .toEqual([
+        ["raised", id],
+        ["closed", "cleared"],
       ]);
   });
 });

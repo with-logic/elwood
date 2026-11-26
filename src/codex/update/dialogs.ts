@@ -3,7 +3,6 @@
  * (PRD §5.13 "Codex update offers", C-ATTN-10).
  */
 import type { ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";
-import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import {
   nativeRenderEvidenceIntact,
@@ -15,7 +14,7 @@ import type { CodexEventMap } from "../session/types.ts";
 import type { SettledCodexStartupOutcome } from "../startup-prompts.ts";
 import type { ElwoodDialogEvent } from "../workspace-trust/types.ts";
 import { createCodexUpdateDialogRequest, readCodexUpdateOffer } from "./dialog-request.ts";
-import { codexUnconfiguredComposerVisible } from "./repaint.ts";
+import { updateScreenBanner } from "./layout.ts";
 
 type DialogListener = (event: ElwoodDialogEvent) => unknown;
 type CloseReason = Extract<ElwoodDialogEvent, { phase: "closed" }>["reason"];
@@ -24,8 +23,6 @@ export type CodexUpdateDialogsInput = {
   readonly elwoodSessionId: string;
   readonly emitter: TypedEmitter<CodexEventMap>;
   readonly terminal: () => ElwoodTerminal;
-  /** Codex's configured composer, proved on the live terminal. */
-  readonly clearance: TrustClearance;
   /** The session's dialog delivery, which reports one listener failure per session. */
   readonly observeNotifications: (deliver: () => void) => void;
 };
@@ -110,8 +107,9 @@ export class CodexUpdateDialogs {
     const offer = this.skip ? undefined : readCodexUpdateOffer(frame);
     const key = offer && JSON.stringify(offer);
     if (key === this.current?.key) return;
-    const composer = codexUnconfiguredComposerVisible(frame) || this.input.clearance(frame);
-    this.retire(offer ? "replaced" : composer ? "cleared" : "unavailable");
+    // Codex took the offer away only when its banner is gone; a partial or ambiguous
+    // offer, or one a new skip answers, still shows it.
+    this.retire(offer ? "replaced" : updateScreenBanner.test(frame) ? "unavailable" : "cleared");
     if (!(offer && key)) return;
     const request = createCodexUpdateDialogRequest(this.input.elwoodSessionId, offer);
     this.current = { request, key };

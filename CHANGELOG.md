@@ -17,7 +17,7 @@ back each entry are listed in `prd/14-conformance.md`.
   takes the offer over, after the skip's retries end with the offer still on
   screen, or when the offer has no safe choice. The request carries the banner
   text, the installed and offered versions, and the native choices. `dialog`
-  events close it with `cleared` when Codex's composer replaces it. Hosts answer
+  events close it with `cleared` once the offer leaves the screen. Hosts answer
   it at the terminal for now. Claude has no update screen, so Claude sessions
   never report one. **Breaking for TypeScript hosts:** `ElwoodDialogRequest` is
   now a union discriminated by `kind`; check `kind === "trust"` before reading
