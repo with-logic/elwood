@@ -22,3 +22,17 @@ had `numStartups` of at least 5 and `autoModeEnvSetup` set to
   removed.
 
 All three were closed with Esc and never continued.
+
+## Working composer
+
+`working-composer/` holds two frames captured on 2026-11-26 from one Elwood session
+in bypass-permissions mode, Opus 5.5, autotrust and a 189x48 terminal, while Claude
+ran `sleep 12` through its Bash tool. The project path is normalized to
+`/tmp/ELWOOD_CAPTURE/project`, the usage notice above the composer is removed, and
+trailing spaces are removed.
+
+- `working-empty.json` is the composer during the tool call: `❯` and a no-break
+  space over the `· esc to interrupt` footer, with the hardware cursor at column 2.
+- `queued-messages.json` is the same composer 1.2 s after a `sendGuidance`, which
+  Claude queued: it holds the `Press up to edit queued messages` placeholder, and
+  the queued note shows above it.

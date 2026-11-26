@@ -12,6 +12,16 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `sendGuidance` written during a running turn now carries its `sendId`, the
+  original API `text` and `promptProvenance: { origin: "api", input: "pasted" }`
+  on its `user_message`, on both adapters. Claude and Codex fire the guidance's
+  `UserPromptSubmit` under the running turn's existing ID, and Elwood used to
+  treat that hook as unattributable. It also ended `sendId` tracking for the rest
+  of the session, so every later send lost its `sendId` too. A hook under an
+  existing ID now carries the `sendId` only when its prompt exactly matches the
+  one pending guidance. Guidance edited in the composer, two guidance sends
+  written before either hook arrives, and any other send under an existing ID
+  stay unassociated.
 - A `frame_observer_failed` warning for a frame Elwood observed while a session was
   still starting now reaches a `warning` listener attached once `startClaude()`,
   `startCodex()` or a resume returns, as other startup warnings do. Before, Elwood

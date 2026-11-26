@@ -1,0 +1,11 @@
+{
+  "text": "\n ▐▛███▛█   Claude Code v2.1.332\n▝▜██████▀  Opus 5.5 · Claude Ultra\n ▝▝   ▝▝   /tmp/ELWOOD_CAPTURE/project\n\n\n❯ Use the Bash tool to run sleep 12. Then reply with the single word: done.\n\n  Bash(sleep 12)\n  ⎿  Running…\n\n❯ Coordinator note one: also say ALPHA.\n  ⎿  Queued · ctrl+x ctrl+s to send now\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n✻ Actualizing… (6s · ↓ 80 tokens)\n\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Press up to edit queued messages\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt",
+  "title": "◐ Sleep 12 second command",
+  "cols": 189,
+  "rows": 48,
+  "cursorX": 2,
+  "cursorY": 45,
+  "baseY": 0,
+  "viewportY": 0,
+  "visible": true
+}
