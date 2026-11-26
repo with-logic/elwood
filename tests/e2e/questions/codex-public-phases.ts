@@ -11,7 +11,7 @@ import {
   queuedLiteralAnswer,
 } from "./codex-public-answers.ts";
 import {
-  publicCodexBlueAnswer,
+  publicCodexOptionAnswer,
   publicCodexQuestionRecords,
   type publicCodexQuestionSandbox,
   waitForPublicCodexQuestion as waitFor,
@@ -99,7 +99,7 @@ export async function publicCodexQueuedPhase(
   assert.equal(settled, false);
   assert.equal(live.status, "blocked");
   signal.throwIfAborted();
-  await facade.answerQuestions(requests[0]!.id, [publicCodexBlueAnswer(requests[0]!)], {
+  await facade.answerQuestions(requests[0]!.id, [publicCodexOptionAnswer(requests[0]!, "Blue")], {
     timeoutMs: 30_000,
   });
   assert.equal((await reply).trim(), "ELWOOD_ASYNC_DONE");

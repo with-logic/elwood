@@ -1,40 +1,22 @@
 /** A real Codex turn that ends with its queued question on screen settles (PRD §5.3, C-ATTN-02). */
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import { CodexSession, type ElwoodQuestionEvent } from "../../src/index.ts";
+import type { ElwoodQuestionEvent } from "../../src/index.ts";
+import { turnEndPrompt } from "./questions/codex-prompts.ts";
 import {
+  publicCodexOptionAnswer,
   publicCodexQuestionSandbox,
+  publicCodexQuestionSession,
   waitForPublicCodexQuestion,
 } from "./questions/codex-public-sandbox.ts";
-import { questionCodexBinary, questionCodexModel } from "./questions/codex-sandbox.ts";
-
-const prompt =
-  'Use only request_user_input_async, exactly once, to ask exactly two questions: title "ELWOOD_END_SIZE: Which size?", options ["Small","Large"]; title "ELWOOD_END_COLOR: Which color?", options ["Amber","Blue"]. As soon as the first answer arrives, reply with exactly ELWOOD_END_DONE and nothing else, without waiting for the other answer. Do not inspect files, use other tools, or ask prose questions.';
+import { codexQuestionProofSkip } from "./questions/codex-sandbox.ts";
 
 test("C-ATTN-02 a Codex turn that ends with its queued question on screen settles at ready", {
-  skip:
-    process.env["ELWOOD_NATIVE_QUESTIONS_PROOF"] === "1"
-      ? existsSync(questionCodexBinary) && existsSync(join(homedir(), ".codex/auth.json"))
-        ? false
-        : "requires pinned Codex and auth"
-      : "set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for two isolated valid-model turns",
+  skip: codexQuestionProofSkip("two valid-model turns in one session"),
   timeout: 180_000,
 }, async () => {
   const sandbox = await publicCodexQuestionSandbox();
-  const session = new CodexSession({
-    cwd: sandbox.cwd,
-    stateDir: sandbox.stateDir,
-    model: questionCodexModel,
-    reasoningEffort: "low",
-    autotrust: true,
-    autoupdate: false,
-    sandbox: "read-only",
-    approvalPolicy: "never",
-    initialSize: { cols: 140, rows: 45 },
-  });
+  const session = publicCodexQuestionSession(sandbox);
   const events: ElwoodQuestionEvent[] = [];
   const statuses: string[] = [];
   session.on("question", (event) => events.push(event));
@@ -42,21 +24,16 @@ test("C-ATTN-02 a Codex turn that ends with its queued question on screen settle
   try {
     const live = await session.start();
     await live.waitForStatus((status) => status === "ready", 45_000);
-    const reply = session.send(prompt, { timeoutMs: 60_000 });
-    // Report the first failure, not the turn this test's cleanup ends.
+    const reply = session.send(turnEndPrompt, { timeoutMs: 60_000 });
+    // If a step below fails, cleanup's close() rejects this send; handle that rejection here so
+    // the runner reports the failed step.
     reply.catch(() => undefined);
     await waitForPublicCodexQuestion(() => events.filter((e) => e.phase === "raised").length === 2);
     const [size, color] = await session.listQuestions();
     assert.ok(size && color);
-    const large = size.questions[0]?.options.find((option) => option.label === "Large");
-    assert.ok(large);
-    await session.answerQuestions(
-      size.id,
-      [{ questionId: size.questions[0]!.id, optionIds: [large.id] }],
-      {
-        timeoutMs: 30_000,
-      },
-    );
+    await session.answerQuestions(size.id, [publicCodexOptionAnswer(size, "Large")], {
+      timeoutMs: 30_000,
+    });
     // The model ends its turn with the color choice still open below the `? ` cells Codex
     // 0.172 drew under the prompt. Codex withdraws it, leaving that history above the idle
     // composer that must clear the queued panel's hold.
@@ -68,13 +45,23 @@ test("C-ATTN-02 a Codex turn that ends with its queued question on screen settle
       ["answered", "unavailable"],
     );
     assert.deepEqual(await session.listQuestions(), []);
+    // A reply cell under the prompt would bound it without the `? ` cells this proof is for.
+    const lines = live.terminal.snapshot().lines.map((line) => line.trimEnd());
+    const prompt = lines.findIndex((line) =>
+      line.startsWith("› Use only request_user_input_async"),
+    );
+    const below = lines.slice(prompt + 1).find((line) => line !== "" && !line.startsWith(" "));
+    assert.ok(prompt >= 0 && below?.startsWith("? ELWOOD_END_SIZE"), lines.join("\n"));
     // The same composer takes the next prompt.
     const next = await session.send("Reply with exactly ELWOOD_END_AGAIN and nothing else.", {
       timeoutMs: 60_000,
     });
     assert.equal(next.trim(), "ELWOOD_END_AGAIN");
   } finally {
-    await session.close();
-    sandbox.dispose();
+    try {
+      await session.close();
+    } finally {
+      sandbox.dispose();
+    }
   }
 });

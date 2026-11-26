@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
-import type { ElwoodQuestionRequest } from "../../../src/index.ts";
+import { CodexSession, type ElwoodQuestionRequest } from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
@@ -14,15 +14,37 @@ import {
 import { shellQuote } from "../../../src/runtime/shell.ts";
 import { subscribeRender } from "../../../src/terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../../src/terminal/headless.ts";
-import { nativeCodexQuestionFiles } from "./codex-sandbox.ts";
+import {
+  nativeCodexQuestionFiles,
+  nativeQuestionSize,
+  questionCodexModel,
+} from "./codex-sandbox.ts";
 import { committedCodexQuestionRecords, privateQuestionArtifacts } from "./proof-files.ts";
 
-export function publicCodexBlueAnswer(request: ElwoodQuestionRequest) {
+export function publicCodexOptionAnswer(request: ElwoodQuestionRequest, label: string) {
   const question = request.questions[0];
   if (!question) throw new Error("Native question request contains no questions");
-  const option = question.options.find((item) => item.label === "Blue");
-  if (!option) throw new Error("Native question did not offer Blue");
+  const option = question.options.find((item) => item.label === label);
+  if (!option) throw new Error(`Native question did not offer ${label}`);
   return { questionId: question.id, optionIds: [option.id] };
+}
+
+/** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default. */
+export function publicCodexQuestionSession(
+  sandbox: { readonly cwd: string; readonly stateDir: string },
+  initialSize: { readonly cols: number; readonly rows: number } = nativeQuestionSize,
+): CodexSession {
+  return new CodexSession({
+    cwd: sandbox.cwd,
+    stateDir: sandbox.stateDir,
+    model: questionCodexModel,
+    reasoningEffort: "low",
+    autotrust: true,
+    autoupdate: false,
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    initialSize,
+  });
 }
 
 const publicQuestionTimeoutMs = 60_000;

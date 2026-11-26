@@ -37,7 +37,7 @@ back each entry are listed in `prd/14-conformance.md`.
   hidden cursor after the working row's glyph or elapsed time, or while it still
   shows the previous answer as waiting to be submitted.
 - A Codex 0.172 turn that ends while one of its queued questions is still open
-  now settles at `ready`. 0.172 draws a question it asks as a `? ` row under the
+  now settles at `ready`. 0.172 draws a question it asks as a `? ` cell under the
   prompt, and Elwood did not read that history as finished, so the session stayed
   `blocked` and `send()` timed out.
 
