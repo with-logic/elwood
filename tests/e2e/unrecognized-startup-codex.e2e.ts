@@ -12,7 +12,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
-import { cleanup, makeProject, skipIf, skipReason } from "./helpers.ts";
+import { codexLaunches, runCodexTest } from "./codex-test-end.ts";
+import { makeProject, skipIf, skipReason } from "./helpers.ts";
 import { recordPty } from "./pty-record.ts";
 import { sandboxedCodexHome } from "./scratch.ts";
 import { awaitStartupBlock } from "./unrecognized-startup.ts";
@@ -27,26 +28,30 @@ test("C-E2E-31 Codex's sign-in screen blocks the session, and nothing is written
     login: false,
   });
   const record = recordPty();
+  const launches = codexLaunches();
   let session: CodexSessionApi | undefined;
   try {
-    session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
-    const active = session;
-    const sent = active.sendMessage("Reply with the single word PONG.");
-    const { observed, outcome, input } = await awaitStartupBlock(active, record, sent, {
-      label: "codex-unrecognized-startup",
-      screen: "Sign in with ChatGPT",
+    // The sandbox is removed only once the session is confirmed gone, and kept otherwise.
+    await runCodexTest({ sessions: () => [session], sandbox, launches }, async () => {
+      session = await launches.track(
+        startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true }),
+      );
+      const active = session;
+      const sent = active.sendMessage("Reply with the single word PONG.");
+      const { observed, outcome, input } = await awaitStartupBlock(active, record, sent, {
+        label: "codex-unrecognized-startup",
+        screen: "Sign in with ChatGPT",
+      });
+      // A second later: still blocked on the same screen, the message still held.
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      assert.equal(active.status, "blocked");
+      assert.ok(active.terminal.snapshot().text.includes("Sign in with ChatGPT"));
+      assert.equal(outcome.current, "pending", "the queued message is still held");
+      assert.deepEqual(input(), [], "nothing was written to the sign-in screen");
+      const reports = observed.activities.filter((event) => event.kind === "unrecognized_startup");
+      assert.equal(reports.length, 1, "the animated screen was reported once");
     });
-    // A second later: still blocked on the same screen, the message still held.
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-    assert.equal(active.status, "blocked");
-    assert.ok(active.terminal.snapshot().text.includes("Sign in with ChatGPT"));
-    assert.equal(outcome.current, "pending", "the queued message is still held");
-    assert.deepEqual(input(), [], "nothing was written to the sign-in screen");
-    const reports = observed.activities.filter((event) => event.kind === "unrecognized_startup");
-    assert.equal(reports.length, 1, "the animated screen was reported once");
   } finally {
-    await cleanup(session);
     resetRuntimeSeamsForTests();
-    sandbox.dispose();
   }
 });

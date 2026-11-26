@@ -4,7 +4,6 @@
  */
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { unrecognizedStartupActivity } from "../../core/activity/startup.ts";
-import { runContained } from "../../core/contained.ts";
 import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.ts";
 import { cachedLiveSnapshot, settledLiveSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
@@ -29,8 +28,8 @@ type StartupDiagnostics = {
  * Retain the last settled startup screen until readiness, cancellation, or the backstop.
  * The backstop emits a content-free warning. When no recognized dialog or startup
  * automation holds readiness it also emits a bounded copy of the captured screen as
- * activity. An unrecognized startup screen's report is activity too, contained like the
- * backstop's. The deadline re-reads the terminal, which a resize can have reflowed.
+ * activity. An unrecognized startup screen's report is activity too, emitted while a frame
+ * is observed. The deadline re-reads the terminal, which a resize can have reflowed.
  */
 export function createStartupReadinessGate(
   onReady: () => void,
@@ -48,7 +47,7 @@ export function createStartupReadinessGate(
   let capture = true;
   // Frames are watched until readiness or cancellation.
   let watching = true;
-  // The terminal frames come from, and the text of the last completed one.
+  // The live terminal and its last settled text, kept to reject a stale frame at the deadline.
   let terminal: ElwoodTerminal | undefined;
   let completedText: string | undefined;
   // Read when a frame is classified, which the deadline can do long after it rendered: output
@@ -89,13 +88,12 @@ export function createStartupReadinessGate(
       configured,
       nativeStartupScreen,
       completed: frameCompleted,
+      // A listener that throws reaches the frame observer, which reports it (C-API-72).
       report: (text) =>
-        runContained(() =>
-          events.emit(
-            "activity",
-            unrecognizedStartupActivity(agent, elwoodSessionId, text, "initial_ready_deadline"),
-            true,
-          ),
+        events.emit(
+          "activity",
+          unrecognizedStartupActivity(agent, elwoodSessionId, text, "initial_ready_deadline"),
+          true,
         ),
       onBackstop: (recognizedHold) => {
         const backstopScreen = screen;

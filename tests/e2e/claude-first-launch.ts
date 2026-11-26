@@ -10,11 +10,11 @@
  * by are unset as well.
  */
 
-import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeSessionApi } from "../../src/index.ts";
 import { privateTempDir, removeOrReport } from "../helpers/private-temp.ts";
-import { firstLaunchKey } from "./claude-first-launch-answers.ts";
+import { type FirstLaunchKey, firstLaunchKey } from "./claude-first-launch-answers.ts";
 import { parseGlobalConfig } from "./claude-global-config.ts";
 import { userConfigDir } from "./claude-home.ts";
 import { registerPrivateHome } from "./home-guard.ts";
@@ -26,7 +26,10 @@ const onboardingKeys = ["hasCompletedOnboarding", "lastOnboardingVersion", "them
 /** Environment for the launch: the private config dir, and no terminal Claude could set up. */
 export type FirstLaunch = {
   readonly env: Readonly<Record<string, string | undefined>>;
+  /** Removes the config dir. Call it only once the session is confirmed stopped. */
   dispose(): void;
+  /** Keeps the config dir, which a Claude still running may use, and fails the run with it. */
+  keep(): void;
 };
 
 /**
@@ -62,7 +65,15 @@ export function firstLaunch(): FirstLaunch {
     CLAUDE_CONFIG_DIR: dir,
     ...Object.fromEntries(terminalDetectionKeys.map((key) => [key, undefined])),
   };
-  return { env, dispose };
+  const keep = () => {
+    release();
+    process.exitCode = 1;
+    writeSync(
+      2,
+      `Kept the e2e first-launch Claude config dir ${JSON.stringify(dir)}: its Claude may still run\n`,
+    );
+  };
+  return { env, dispose, keep };
 }
 
 const maxAnswers = 6;
@@ -71,8 +82,10 @@ const maxAnswers = 6;
  * Answers the first-launch screens with raw keys until the session leaves `blocked`. A
  * screen it does not know fails the wait, unanswered. Returns the keys it pressed.
  */
-export async function answerFirstLaunch(session: ClaudeSessionApi): Promise<readonly string[]> {
-  const pressed: string[] = [];
+export async function answerFirstLaunch(
+  session: ClaudeSessionApi,
+): Promise<readonly FirstLaunchKey[]> {
+  const pressed: FirstLaunchKey[] = [];
   let answered: string | undefined;
   while (session.status === "blocked") {
     if (pressed.length >= maxAnswers) throw new Error(`Still blocked after ${maxAnswers} answers`);

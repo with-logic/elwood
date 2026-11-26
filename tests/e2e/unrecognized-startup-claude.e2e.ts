@@ -10,12 +10,12 @@ import test from "node:test";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { answerFirstLaunch, firstLaunch } from "./claude-first-launch.ts";
-import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 import { recordPty } from "./pty-record.ts";
 import { awaitStartupBlock } from "./unrecognized-startup.ts";
 
 test("C-E2E-30 Claude's first-launch screens block the session, and raw keys answer them", {
-  skip: skipIf(skipReason("claude")),
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: 240_000,
 }, async () => {
   const project = makeProject("claude");
@@ -60,8 +60,10 @@ test("C-E2E-30 Claude's first-launch screens block the session, and raw keys ans
       "the session reached ready",
     );
   } finally {
-    await cleanup(session);
+    const stopped = await cleanup(session);
     resetRuntimeSeamsForTests();
-    launch.dispose();
+    // A Claude whose stop was not confirmed may still write to its config dir.
+    if (stopped) launch.dispose();
+    else launch.keep();
   }
 });

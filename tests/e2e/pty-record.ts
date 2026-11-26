@@ -18,7 +18,7 @@ export type PtyRecord = {
   readonly sizes: { readonly outputChunksBefore: number; readonly size: TerminalSize }[];
   /** Each write, in order, with the number of output chunks received before it. */
   readonly writes: { readonly data: string; readonly outputChunksBefore: number }[];
-  /** When the first output chunk arrived, by `Date.now()`. */
+  /** When the first output chunk arrived, by the monotonic `performance.now()`. */
   firstOutputAt?: number;
 };
 
@@ -33,7 +33,7 @@ export function recordPty(): PtyRecord {
     if (record.sizes.length > 0) return pty;
     record.sizes.push({ outputChunksBefore: 0, size: options.size });
     pty.onData((data) => {
-      record.firstOutputAt ??= Date.now();
+      record.firstOutputAt ??= performance.now();
       record.output.push(data);
     });
     return {

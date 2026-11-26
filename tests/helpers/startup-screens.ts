@@ -7,4 +7,4 @@ export const noStartupScreens = {
   nativeStartupScreen: () => false,
   completed: () => true,
   report: () => undefined,
-};
+} as const;

@@ -37,8 +37,9 @@ export async function awaitStartupBlock(
     "the unrecognized startup report",
     60_000,
   );
-  // Polling finds the report after it was emitted, so this bounds it from above.
-  const reportedAt = Date.now();
+  // Polling finds the report after it was emitted, so this bounds it from above. Both times
+  // are monotonic, so a wall-clock change cannot shorten the interval.
+  const reportedAt = performance.now();
   assert.equal(session.status, "blocked");
   const attention = observed.activities.filter((event) => event.kind === "attention");
   assert.deepEqual(
@@ -47,7 +48,8 @@ export async function awaitStartupBlock(
   );
   assert.equal(report.label, "initial_ready_deadline");
   assert.ok(report.text.includes(expected.screen), "the report holds the screen");
-  const firstOutputAt = record.firstOutputAt ?? reportedAt;
+  const { firstOutputAt } = record;
+  assert.ok(firstOutputAt !== undefined, "the recorder saw the CLI's first output");
   assert.ok(reportedAt - firstOutputAt <= reportWithinMs, "the screen was reported late");
   assert.ok(session.terminal.snapshot().text.includes(expected.screen), "the screen is still up");
   assert.equal(outcome.current, "pending", "the queued message is held");

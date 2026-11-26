@@ -23,9 +23,9 @@ afterEach(async () => {
 /** Codex 0.171.0's sign-in screen, for a Codex home with no login. Its logo is animated. */
 const signIn = capturedFrame("codex-0.171.0/startup/sign-in").trimEnd();
 const signInRedrawn = signIn.replace("Welcome to Codex", "Welcome  to Codex");
-const boot = capturedFrame("codex-0.164.0/boot/boot-composer").trimEnd();
+const bootComposer = capturedFrame("codex-0.164.0/boot/boot-composer").trimEnd();
 /** Codex 0.172.0's header over its logo, drawn before its boot composer. */
-const header = capturedFrame("codex-0.172.0/update/start-boot-partial").trimEnd();
+const bootHeaderFrame = capturedFrame("codex-0.172.0/update/start-boot-partial").trimEnd();
 const working = "• Working (3s • esc to interrupt)\n› ";
 
 async function start() {
@@ -101,7 +101,7 @@ test("C-ATTN-11 an animated screen reports once, and a screen after a recognized
     "unrecognized_startup initial_ready_deadline",
   ]);
   // Codex's boot composer is its own startup screen: it ends the run, not the block.
-  await paint(codexTty(boot));
+  await paint(codexTty(bootComposer));
   await vi.advanceTimersByTimeAsync(1_000);
   expect(statuses).toEqual(["blocked"]);
   await paint(tty(signIn));
@@ -134,7 +134,7 @@ test("C-ATTN-11 work on screen clears the block to running", async () => {
 
 test("C-ATTN-11 Codex's header drawn alone while it loads is no unrecognized screen", async () => {
   const { statuses, paint, reports } = await start();
-  await paint(tty(header));
+  await paint(tty(bootHeaderFrame));
   await vi.advanceTimersByTimeAsync(12_000);
   expect(statuses).toEqual([]);
   expect(reports()).toEqual([]);
@@ -173,7 +173,7 @@ test("C-ATTN-11 a status listener that throws on the block does not stop the rep
 test("C-ATTN-11 after the first readiness no screen is an unrecognized startup screen", async () => {
   const { statuses, paint, reports } = await start();
   // The deadline passes on the boot composer, so readiness comes after it.
-  await paint(codexTty(boot));
+  await paint(codexTty(bootComposer));
   await vi.advanceTimersByTimeAsync(10_000);
   await paint(codexTty(codexComposer));
   await vi.advanceTimersByTimeAsync(500);
