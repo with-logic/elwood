@@ -104,6 +104,13 @@ back each entry are listed in `prd/14-conformance.md`.
   activities, or readiness's view of it. A new content-free
   `frame_observer_failed` warning reports the first such failure in a session.
   A throwing `status` listener also no longer skips that status's `activity`.
+- The `initial_ready_backstop` `unrecognized_startup` activity now replaces
+  `sk-` API-key-shaped tokens in its screen text with `sk-[REDACTED]`, including
+  a key wrapped across rows. Each continuing key run becomes `[REDACTED]`, even
+  when it is an ordinary word. Codex's API-key sign-in page, for
+  example, shows the `OPENAI_API_KEY` from the login shell unmasked.
+  `terminal:data`, `terminal.snapshot()` and `readScreen()` still show the screen
+  as drawn.
 
 ## [0.8.0] - 2026-11-25
 
