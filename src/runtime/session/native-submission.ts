@@ -111,7 +111,8 @@ type IdleSession = Pick<
 
 /**
  * A session's native idle evidence, read once its frame is classified: a render notifies its
- * listeners before the PTY render observer classifies the frame (C-API-48). Unsubscribing
+ * listeners before the PTY render observer classifies the frame (C-API-48). Only the CLI's
+ * output after Enter is progress: a host render wakes the read but never supplies it. Unsubscribing
  * also cancels a delivery already queued.
  */
 export function nativeIdleSource(
@@ -120,7 +121,7 @@ export function nativeIdleSource(
 ): IdleSource {
   return {
     capture: () => {
-      const progressed = captureRenderProgress(session.terminal);
+      const progressed = captureRenderProgress(session.terminal, "pty");
       const isReady = () =>
         !session.closing.signal.aborted &&
         progressed() &&

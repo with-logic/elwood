@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `send()` or `stream()` turn no longer counts output the host draws with
+  `terminal.writeOutput()` as the CLI's own output after Enter. Before, a host write
+  while the CLI's previous empty composer was still on screen could let the turn
+  complete before the CLI showed it was idle.
+
 - A `frame_observer_failed` warning for a frame Elwood observed while a session was
   still starting now reaches a `warning` listener attached once `startClaude()`,
   `startCodex()` or a resume returns, as other startup warnings do. Before, Elwood

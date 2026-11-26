@@ -68,3 +68,32 @@ test("C-API-48 an idle wait cancelled by the frame's own observer is never notif
     terminal.dispose();
   }
 });
+
+test("C-API-48 host output over the old empty composer is not the CLI's progress", async () => {
+  const { terminal, emit } = setupTerminalPty();
+  const session = {
+    terminal,
+    closing: new AbortController(),
+    status: "ready" as const,
+    inputBlocking: false,
+    automationInputBlocking: false,
+  };
+  try {
+    registerNativeIdle(
+      session,
+      nativeIdleSource(session, () => ({})),
+    );
+    const evidence = captureNativeIdle(session);
+    const idle = vi.fn();
+    evidence?.onIdle(idle);
+    await terminal.writeOutput("host note");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(evidence?.isIdle()).toBe(false);
+    expect(idle).not.toHaveBeenCalled();
+    emit("idle");
+    await terminal.settled();
+    await vi.waitFor(() => expect(idle).toHaveBeenCalledOnce());
+  } finally {
+    terminal.dispose();
+  }
+});
