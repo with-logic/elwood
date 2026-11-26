@@ -25,6 +25,8 @@ export const modalFooterLayouts = {
 >;
 // No question footer has more than four hints, and Codex wraps a footer only between hints.
 const maxFooterRows = 4;
+// Every captured footer starts below a blank row; the row above a footer is part of the match.
+const footerScanRows = maxFooterRows + 1;
 
 /** Classify footer rows, joined with the separator Codex draws between their hints. */
 function classifyFooter(rows: readonly string[]): QuestionFooterKind | undefined {
@@ -48,19 +50,33 @@ export function questionFooter(
 ): { readonly kind: QuestionFooterKind; readonly firstRow: number } | undefined {
   for (let firstRow = lastRow; firstRow >= 0 && lastRow - firstRow < maxFooterRows; firstRow--) {
     const kind = classifyFooter(lines.slice(firstRow, lastRow + 1).map((row) => row.trim()));
-    if (kind) return { kind, firstRow };
+    // An unknown row above the hints would be a layout Elwood has not seen, not part of the body.
+    if (kind && (firstRow === 0 || lines[firstRow - 1]!.trim() === "")) return { kind, firstRow };
   }
   return undefined;
+}
+
+/** The last `count` rows of `text`, read from its end so a render does not split the screen. */
+export function lastRows(text: string, count: number): readonly string[] {
+  const rows: string[] = [];
+  let end = text.length;
+  for (;;) {
+    const start = end === 0 ? -1 : text.lastIndexOf("\n", end - 1);
+    rows.unshift(text.slice(start + 1, end));
+    if (start < 0 || rows.length === count) return rows;
+    end = start;
+  }
 }
 
 /** Modal/notes header-footer pairs and expanded queued editors hold ordinary input;
  * collapsed queued badges have no editor footer and do not block. */
 export function blockingQuestionVisible(text: string): boolean {
-  const lines = text.trimEnd().split("\n");
-  const footerKind = questionFooter(lines, lines.length - 1)?.kind;
+  const screen = text.trimEnd();
+  const tail = lastRows(screen, footerScanRows);
+  const footerKind = questionFooter(tail, tail.length - 1)?.kind;
+  if (footerKind === undefined) return false;
+  const lines = screen.split("\n");
   switch (footerKind) {
-    case undefined:
-      return false;
     case "queued":
       return lines.some((line) => line.trim() === queuedPanelHeader);
     case "withNavigation":

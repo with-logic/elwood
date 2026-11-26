@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readQuestionFrame } from "../../../src/core/questions/input.ts";
-import { CodexSession, type ElwoodQuestionRequest } from "../../../src/index.ts";
+import { CodexSession, type ElwoodQuestionRequest, type TerminalSize } from "../../../src/index.ts";
 import { nodePtyFactory } from "../../../src/pty/node.ts";
 import { runProbe } from "../../../src/runtime/probe/index.ts";
 import {
@@ -41,7 +41,7 @@ export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: stri
  * the narrow-pane proof passes its own pane size. */
 export function publicCodexQuestionSession(
   sandbox: { readonly cwd: string; readonly stateDir: string },
-  initialSize: { readonly cols: number; readonly rows: number } = nativeQuestionSize,
+  initialSize: TerminalSize = nativeQuestionSize,
 ): CodexSession {
   return new CodexSession({
     cwd: sandbox.cwd,

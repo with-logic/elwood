@@ -49,7 +49,10 @@ test("C-QUESTION-04 queued Codex questions are answered in a 50-column pane", {
     // Codex shows the note next, as 1 of 2. At 50 columns 0.172 moves its last footer hint to a
     // row of its own, and that editor must still hold ordinary input.
     const wrapped = ["enter submit   ⌃] skip   ⇧→ main prompt", "⇧← next question"];
-    await waitForPublicCodexQuestion(() => footerRows(live).join("\n") === wrapped.join("\n"));
+    await waitForPublicCodexQuestionsBeforeReply(
+      () => footerRows(live).join("\n") === wrapped.join("\n"),
+      reply,
+    );
     await live.waitForStatus((status) => status === "blocked", 5_000);
     assert.deepEqual(await session.listQuestions(), [note, literal]);
     await session.answerQuestions(note.id, [publicCodexTextAnswer(note, "narrow note")], {
@@ -90,7 +93,10 @@ test("C-QUESTION-04 a modal Codex question is answered in an 80-column pane", {
       "tab to add notes | enter to submit answer | ←/→ to navigate questions",
       "esc to interrupt",
     ];
-    await waitForPublicCodexQuestion(() => footerRows(live).join("\n") === wrapped.join("\n"));
+    await waitForPublicCodexQuestionsBeforeReply(
+      () => footerRows(live).join("\n") === wrapped.join("\n"),
+      reply,
+    );
     await live.waitForStatus((status) => status === "blocked", 5_000);
     const [request] = await session.listQuestions();
     assert.ok(request);

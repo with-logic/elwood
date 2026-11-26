@@ -86,6 +86,10 @@ test.each([
   ["a missing queued hint", ["  enter submit   ⇧→ main prompt", "  ⇧← next question"]],
   ["an unknown queued hint", ["  enter submit   ⌃] skip   ⇧→ main prompt", "  ⇧← next page"]],
   ["queued hints run together", ["  enter submit ⌃] skip   ⇧→ main prompt", "  ⇧← next question"]],
+  [
+    "an unknown row above valid hints",
+    ["  ⇧↑ history", "  enter submit   ⌃] skip   ⇧→ main prompt", "  ⇧← next question"],
+  ],
 ])("C-QUESTION-04 C-ATTN-02 a wrapped queued footer refuses %s", (_, footer) => {
   const frame = withFooter(queuedFirst, footer);
   expect(questionView(frame)).toBeUndefined();
@@ -111,6 +115,14 @@ test.each([
   [
     "queued and modal hints mixed",
     ["  tab to add notes | enter to submit answer", "  ⇧← next question"],
+  ],
+  [
+    "an unknown row above valid hints",
+    [
+      "  ctrl+o to expand",
+      "  tab to add notes | enter to submit answer | ←/→ to navigate questions",
+      "  esc to interrupt",
+    ],
   ],
 ])("C-QUESTION-04 C-ATTN-02 a wrapped modal footer refuses %s", (_, footer) => {
   const frame = withFooter(modal80, footer);
