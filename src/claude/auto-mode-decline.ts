@@ -76,6 +76,14 @@ export class ClaudeAutoModeOfferDecliner {
     return { outcome: { kind: "attempted", prompt: "auto_mode_setup", input: "esc" }, settled };
   }
 
+  /**
+   * Checked on the settled frame just before each Esc goes out, after the writer's wait for
+   * settlement: raw caller input during that wait hands the offer to the human, so the Esc
+   * is withheld. Only a new appearance clears `humanOwned`, and none starts mid-decline.
+   */
+  private readonly stillDeclinable = (frameText: string): boolean =>
+    !this.humanOwned && isClaudeAutoModeOfferMenu(frameText);
+
   /** `answered` only once a settled frame shows the menu gone after an Esc went out. */
   private async decline(
     write: OfferDeclineWriter,
@@ -92,7 +100,7 @@ export class ClaudeAutoModeOfferDecliner {
         // Exhausted attempts report nothing: the session stays `blocked` on the offer's
         // attention label, which leaves it to the human (§5.1).
         if (attempt === offerDeclineAttempts) return "cancelled";
-        if ((await write(declineKey, isClaudeAutoModeOfferMenu)) !== "withheld") wrote = true;
+        if ((await write(declineKey, this.stillDeclinable)) !== "withheld") wrote = true;
       }
     } catch (error) {
       if (this.signal.aborted) return "cancelled";
