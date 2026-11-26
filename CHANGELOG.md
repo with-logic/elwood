@@ -19,12 +19,34 @@ back each entry are listed in `prd/14-conformance.md`.
   for them. When the frames after the earlier send's Enter show that Claude took
   its input, Elwood now releases that draft without sending keys.
 
+- `autotrust: true` now approves Claude's workspace trust prompt when it discloses the
+  folder's hooks, and Claude then runs those hooks. Claude Code 2.1.329 and later add two
+  hooks rows to that prompt, naming `.claude/settings.json`, `.claude/settings.local.json`
+  or both. Elwood treated them as unknown prose, so the session stayed `blocked`. The
+  `elwood` CLI's `--trust`, on by default, approves it too.
+
+- `listClaudeModels` does not approve that prompt, because its autotrust is implied
+  rather than chosen. It rejects with `claude_start_failed` and
+  `details.category: "workspace_hooks"`, and the folder stays untrusted. A Claude older
+  than 2.1.329, or of an unparseable version, cannot disclose hooks, so on it
+  `listClaudeModels` refuses every workspace trust prompt Elwood verifies the same way. A
+  prompt Elwood cannot verify, such as the load row alone that 2.1.326 through 2.1.328
+  draw, is never answered, so the probe fails when readiness runs out. List models from a
+  folder Claude already trusts.
+
+- Claude workspace trust requests have `disclosesHooks`. It is `true` when the prompt
+  disclosed hooks that run once the folder is trusted. `false` means only that the prompt
+  disclosed none, not that the folder has no hooks. `ElwoodDialogRequest<ElwoodAgentKind>`
+  is now a union, so narrowing `agent` to `"claude"` exposes the field. With automatic
+  trust off, `listDialogs()` now lists that prompt and `answerDialog()` answers it.
+
 - Claude guidance sent during a running turn now produces its `user_message`
   activity. Claude Code 2.1.332 fires the guidance's `UserPromptSubmit` with the
   running turn's prompt ID, which Elwood had treated as a duplicate. That
   `user_message` carries the running turn's `turnId`, so one Claude turn can
   have more than one `user_message`. Guidance appears once even when an
   interrupt makes Claude screen it again under a new prompt ID.
+
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
   for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
   which records no dismissal in Codex's update state. It writes the key once the

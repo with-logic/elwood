@@ -163,7 +163,7 @@ export class ClaudeWorkspaceTrustDiscovery {
   ): VerifiedWorkspaceTrust<"claude"> | undefined {
     this.retireIfScopeProofLost(candidate.frame, proved);
     if (proved !== true || !this.canUseTrustFrame(candidate.frame)) return undefined;
-    const verified = this.polling.acceptVerified("claude", this.input.elwoodSessionId, candidate);
+    const verified = this.polling.acceptVerified(this.input.elwoodSessionId, candidate);
     if (this.answerRequest?.request !== verified.request)
       this.answerRequest = openClaudeTrustAnswer(candidate.gateIdentity, verified.request);
     return verified;

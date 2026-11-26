@@ -9,6 +9,7 @@ import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reas
 import { validateSpeed } from "../../core/speed/validate.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
 import { snapshotEnvironment } from "../../runtime/environment.ts";
+import type { ProbeDirectory } from "../../runtime/probe/directory-key.ts";
 import {
   type CheckedLaunchDirectory,
   prepareLaunchDirectory,
@@ -27,7 +28,8 @@ import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
-import { preflightClaude } from "../preflight.ts";
+import { claudeCanDiscloseHooks, preflightClaude } from "../preflight.ts";
+import type { ProbeTrustRefusal, ProbeWorkspaceTrust } from "../probe-trust.ts";
 import {
   type ClaudeLaunchTrustEvidence,
   captureClaudeStartupTrustEvidence,
@@ -52,11 +54,16 @@ export function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessi
   return startClaudeWithId(rawOptions, randomUUID());
 }
 
-/** Internal deterministic-identity start used by owners that must clean failed launch state. */
+/**
+ * Internal deterministic-identity start used by owners that must clean failed launch state.
+ * `onProbeTrustRefused` makes the model probe's workspace trust policy (§5.3), and is called
+ * with the reason whenever the policy refuses a prompt.
+ */
 export async function startClaudeWithId(
   rawOptions: StartClaudeOptions,
   elwoodSessionId: string,
   checkedDirectory?: CheckedLaunchDirectory,
+  onProbeTrustRefused?: (reason: ProbeTrustRefusal) => void,
 ): Promise<ClaudeSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
@@ -83,12 +90,16 @@ export async function startClaudeWithId(
   validateSpeed("claude", options.fastMode);
   const stateDir = canonicalStatePath(stateDirPath);
   const strict = options.strictVersionCheck ?? false;
+  const probeDirectory = { ...directory, env: options.env };
   const warning = await recheckLaunchDirectoryOnFailure(directory, () =>
-    preflightClaude(strict, options.autoupdate ?? false, {
-      ...directory,
-      env: options.env,
-    }),
+    preflightClaude(strict, options.autoupdate ?? false, probeDirectory),
   );
+  // After any update the preflight ran, so the policy follows the Claude that will launch.
+  const probeTrust =
+    onProbeTrustRefused &&
+    (await recheckLaunchDirectoryOnFailure(directory, () =>
+      probeWorkspaceTrust(probeDirectory, onProbeTrustRefused),
+    ));
   const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(directory);
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
     prepareLaunchState("claude", stateDir, {
@@ -102,12 +113,20 @@ export async function startClaudeWithId(
     return startClaudeFromRecord(
       record,
       stateDir,
-      { ...options, launchDirectory: directory },
+      // Set explicitly: an untyped caller's extra option key never reaches this policy.
+      { ...options, launchDirectory: directory, probeTrust },
       false,
       { preflightWarning: warning, workspaceTrustEvidence },
     );
   });
   return queuePersonaMessage(session, options.persona, session.closing.signal);
+}
+
+async function probeWorkspaceTrust(
+  directory: ProbeDirectory,
+  onRefused: (reason: ProbeTrustRefusal) => void,
+): Promise<ProbeWorkspaceTrust> {
+  return { canDiscloseHooks: await claudeCanDiscloseHooks(directory), onRefused };
 }
 
 export function startClaudeFromRecord(

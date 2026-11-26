@@ -1,7 +1,8 @@
 /**
  * Recognized native trust-dialog explanations, excluding arbitrary intervening prose.
- * Implements PRD §5.4/C-TRUST-01. Claude copy is captured in trust-responder-cursor
- * and trust-bypass-permissions tests; Codex directory/hooks were captured from 0.154.0.
+ * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26. Claude copy is captured in
+ * trust-responder-cursor, trust-bypass-permissions and claude-workspace-trust-hooks tests; Codex
+ * directory/hooks were captured from 0.154.0.
  *
  * A prompt with known copy REQUIRES an explanatory sentence before any key is
  * written: a bare allowlisted header is a hold-only candidate, never a verified
@@ -16,9 +17,35 @@ export const noTrustDescription = /^$/;
 // proves the native body; 2.1.206 omits ", or work from your team".
 const likeYourOwn = String.raw`\(Like your own code, a well-known open source project(?:, or work from your team)?\)\. If not, take a moment to review what's in this folder first\.`;
 const ableTo = String.raw`Claude Code'll be able to read, edit, and execute files here\.`;
+// Claude that discloses hooks adds this pair after `ableTo` when the folder's project settings
+// configure commands that trusting runs (hooks, or a status line command). Both rows name the
+// same files: `.claude/settings.json`, `.claude/settings.local.json`, or both, in that order,
+// joined by "and". Only the pair, in order, counts: either row alone, or rows naming different
+// files, is unknown prose and fails closed.
+const hooksFiles = [
+  [String.raw`\.claude/settings\.json`],
+  [String.raw`\.claude/settings\.local\.json`],
+  [String.raw`\.claude/settings\.json`, String.raw`\.claude/settings\.local\.json`],
+];
+const hooksRows = `(?:${hooksFiles.map(hooksRowsNaming).join("|")})`;
+const ableToRows = `${ableTo}\\s*(?:${hooksRows}\\s*)?`;
 export const claudeWorkspaceDescription = new RegExp(
-  `^(?:${likeYourOwn}\\s*(?:${ableTo}\\s*)?|${ableTo}\\s*)(?:Security guide)?$`,
+  `^(?:${likeYourOwn}\\s*(?:${ableToRows})?|${ableToRows})(?:Security guide)?$`,
 );
+const hooksRowsPattern = new RegExp(hooksRows);
+
+/** Whether verified Claude workspace copy discloses hooks, which trusting the folder runs. */
+export function claudeWorkspaceDisclosesHooks(copy: string): boolean {
+  return hooksRowsPattern.test(copy);
+}
+
+/** The warning and load rows for hooks declared in `files`, each an escaped path. */
+function hooksRowsNaming(files: readonly string[]): string {
+  const warning = `⚠ This folder configures hooks that can run commands without asking, declared in ${files.join(" and ")}`;
+  const loads = files.map((file) => String.raw`${file} \(runs commands\)`);
+  const load = `Trusting this folder loads ${loads.join(" and ")}\\.`;
+  return `${warning}\\s*${load}`;
+}
 
 // 2.1.268 shows the first sentence and the acceptance; 2.1.310 adds the sandbox sentence
 // between them and the security-guide link below. Only the first sentence is required.
