@@ -10,10 +10,12 @@ export function claudeQuestionFooterEnd(lines: readonly string[]): number {
     // Claude wraps at spaces, so a wrapped footer's last row still ends with `cancel`. A shorter
     // question can draw that row on a replaced notice's row, which keeps blank cells after it.
     if (!/cancel *$/.test(line)) return false;
-    // Claude draws every footer row from column 0, so only trailing cells are dropped.
-    let joined = line.trimEnd();
+    let joined = "";
     for (let start = end; start > end - maxFooterRows && start >= 0; start -= 1) {
-      if (start < end) joined = `${lines[start]!.trimEnd()} ${joined}`;
+      const row = lines[start]!;
+      // Claude draws every footer row from column 0; an indented row is question copy.
+      if (/^\s/.test(row)) return false;
+      joined = start < end ? `${row.trimEnd()} ${joined}` : row.trimEnd();
       if (questionFooter.test(joined)) return true;
     }
     return false;

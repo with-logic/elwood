@@ -55,6 +55,7 @@ test.each([
   ["rows without the footer's start", ["copy", "Esc to cancel"]],
   ["a row that ends otherwise", ["Enter to select · Esc to cancel now"]],
   ["an indented row, as question copy is", [`  ${footer.join(" ")}`]],
+  ["a wrapped footer with an indented row", [footer[0]!, `  ${footer[1]!}`, footer[2]!]],
 ])("C-QUESTION-03 finds no footer in %s", (_, lines) => {
   expect(claudeQuestionFooterEnd(lines)).toBe(-1);
 });

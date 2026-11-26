@@ -50,14 +50,14 @@ function credentials(): string {
   return login.trim();
 }
 
+/** The editor the fixtures were captured with: the footer hint reads `ctrl+g to edit in Nvim`. */
+const questionEditor = "nvim";
+
 /** Owns private credentials and process seams; dispose removes/resets them and checks parent drift:
  * the parent settings, hooks, and login are unchanged, and its global config names no private path.
  * Only the default Claude config dir is supported: a set `CLAUDE_CONFIG_DIR` fails setup.
  * Setup failures attempt private-root cleanup and preserve the original error; disposal may report drift.
  */
-/** The editor the fixtures were captured with: the footer hint reads `ctrl+g to edit in Nvim`. */
-const questionEditor = "nvim";
-
 export async function nativeClaudeQuestionSandbox() {
   // The parent files and keychain item `claude-parent.ts` checks are the default config dir's.
   if (userConfigDirSetting())

@@ -90,8 +90,10 @@ export type ClaudeNoticeProof = {
 };
 
 /**
- * Posts the notice before each question and records the evidence for each one. Cancellation closes
- * the session, so `signal` stops reposting before any Alt+T can reach a PTY that is shutting down.
+ * Records each question's notice and footer-paint evidence. The 140-column cases call `post()`
+ * before each prompt; the 60-column case posts no notice and checks the wrapped footer it records.
+ * Cancellation closes the session, so `signal` stops reposting before any Alt+T can reach a PTY
+ * that is shutting down.
  */
 export function claudeNoticeProof(
   press: (input: string) => void,
