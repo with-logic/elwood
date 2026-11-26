@@ -105,8 +105,10 @@ a second prompt.
 ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-question-narrow.e2e.ts
 ```
 
-On the same pinned Codex and model, a 50-column session asks a choice and a
-free-text question in one asynchronous call. At that width Codex 0.172 wraps the
-queued panel's footer hints onto a second row. The proof answers both through
-the public API, and requires both requests to close as answered and `send()` to
+On the same pinned Codex and model, a 50-column session asks the three queued
+questions of C-E2E-19 in one asynchronous call. At that width Codex 0.172 wraps
+the footer of every question but the last onto a second row. The proof answers
+the note first, while it is question 2 of 3, then the color, while it is 1 of 2,
+both under a wrapped footer, and then the literal. It requires the session to
+have been `blocked`, the three requests to close as answered and `send()` to
 return the final reply.

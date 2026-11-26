@@ -3894,12 +3894,20 @@ an unfinished menu, and `send()` timed out with the session still `blocked`. Elw
 accepts `? ` as the start of a transcript cell. Capture:
 `tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.
 
-**A narrow pane wraps the queued panel's footer.** The footer is four hints three spaces
-apart: `enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question` (`⇧→ prev question`
-after the first question; the last question has no `⇧←` hint). At 60 and 50 columns 0.172
-moves `⇧← next question` to a row of its own; at 40 it draws `enter submit   ⌃] skip`
-above `⇧→ main prompt   ⇧← next question`. Elwood read only a footer on one row, so in a
-pane of 60 columns or fewer it never recognized the panel: it did not hold ordinary input
-for it, and `answerQuestions()` failed. Elwood now joins up to four trailing rows of
-these hints. Captures: `tests/fixtures/codex-0.172.0/questions/queued-footer-*.json`.
-C-QUESTION-04.
+**A narrow pane wraps question footers.** Codex 0.172 breaks a footer only between its
+hints. The queued panel's footer is four hints three spaces apart:
+`enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question` (`⇧→ prev question` after
+the first question; the last question has no `⇧←` hint, and its shorter footer still fits on
+one row at 60 columns). At 60 and 50 columns 0.172 moves `⇧← next question` to a row of its
+own; in a 40-column probe whose frame had not settled it drew `enter submit   ⌃] skip`
+above `⇧→ main prompt   ⇧← next question`. The modal footer's four hints are joined by
+` | `: at 60 and 50 columns 0.172 splits it after `enter to submit answer`, and at 40 it
+gives each hint a row. Elwood read a footer only on one row, so whenever one wrapped it did
+not recognize the question: it did not hold ordinary input for it, and `answerQuestions()`
+failed on a queued panel. Elwood now joins up to four trailing rows with the footer's own
+separator. Captures at 60 and 50 columns:
+`tests/fixtures/codex-0.172.0/questions/queued-footer-*.json` and
+`modal-footer-wrapped-{60,40}.json`; the 40-column queued layout is synthesized in
+`tests/unit/codex-questions/narrow-footer.test.ts`. A narrow pane also wraps a modal
+option's description onto a continuation row, which Elwood does not yet match to the
+question, so a narrow modal question holds input but is not listed. C-ATTN-02, C-QUESTION-04.
