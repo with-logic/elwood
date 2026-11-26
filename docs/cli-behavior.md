@@ -179,7 +179,7 @@ launches, and every one of those 24 reported `ready` at 10.0 s, onto a screen
 showing the boot composer without a footer. The other 8 painted their gate at
 8.9 to 9.0 s and readied after it, on footed composers. Unloaded, the gate came
 3.4 to 3.9 s after the first output. Codex's deadline therefore marks only onto a
-composer with its model footer (`codexComposerConfigured`,
+composer with its model footer (`codexReadinessEvidence`,
 `src/codex/screen/clearance.ts`), and a 60 s backstop, twice the longest measured
 gate delay, reports missing evidence without releasing readiness or queued
 input. This avoids typing into an unrecognized late gate. Fixtures:
@@ -4084,3 +4084,57 @@ the hint-row badge reads `Plan mode` (see "The Plan-mode badge moved to the hint
 and the `/plan` menu row reads "switch to Plan mode", so a proof waits for the badge in
 front of the warnings badge. Captures: `modal-footer-wrapped-{60,50,40}.json`.
 C-QUESTION-04.
+
+## Codex 0.172.0 applies its configuration after its footer (2026-11-26)
+
+**Codex paints its status footer before it applies the session's configuration.** The
+footer appears once the model catalog loads, and its effort reads `default` (for example
+`GPT-6-Luna default`) until the response to the TUI's `thread/start` arrives. That
+response waits for a network prewarm, a Responses WebSocket connect, which took 0.5 s
+in the one launch whose Codex log was read. Across 18 launches at load
+averages 7 to 50, the configuration landed 0.3 to 9.8 s after the footer. With a local
+`CONNECT` proxy holding each connection for 12 s (Codex honours `HTTPS_PROXY`), the footer
+appeared at 11.2 s and the configuration at 16.9 s. A stdio MCP server that never answers
+did not delay it.
+
+**Applying the configuration discards what was picked before it.** Codex's
+`on_session_configured` (`codex-rs/tui/src/chatwidget/session_flow.rs`) resets the
+collaboration mode to its default, and the model and effort to the session's. `/plan`
+typed on the `default` footer drew the badge and `Model changed to gpt-6-luna medium for
+Plan mode.` at once. When the configuration landed, the badge vanished and the footer read
+`GPT-6-Luna low`: 3 of 3 launches with `low` requested, 3 of 3 with no effort. The
+`Model changed` line stays above the header box, because Codex commits the session
+header only when the configuration lands. That is the screen C-E2E-19 failed on twice in 20 runs: its turn ran with
+`collaboration_mode` `default` although the badge had been seen.
+
+**Elwood's deadline could mark ready in that window.** Readiness accepted the footer as the
+configured composer. In one launch at load 34, the 10 s deadline fired 1.4 s before the
+configuration, onto `GPT-6-Luna default`. With no effort requested, a launch at load 10
+configured at 11.0 s, 0.85 s after `ready`, and discarded the `/plan` typed before it.
+
+**Only a requested effort makes the configuration visible.** The footer shows `default`
+both with no effort and with `none` (`status_line_reasoning_effort_label`), and every footer
+reads `default` before the configuration. With `low` requested, the frames before and after
+differ only in that label (`tests/fixtures/codex-0.172.0/boot/`). With no effort they do not
+differ at all. Behind the delaying proxy the footer before the configuration also carried a
+`fast` tier badge, which the configuration removed; without the proxy it did not, and a
+session configured for that tier keeps it, so the badge is no signal. The title, the header
+box, the welcome art and the warnings badge do not change either. Codex creates its rollout
+at the first turn, not at `thread/start`, so no transcript appears, and its `SessionStart`
+hook is lazy too. The only file written as the configuration lands is
+`tui-thread-reference-capabilities/<thread id>` in `CODEX_HOME`, about 20 ms before it.
+Elwood does not read that file, and a resumed thread already has one. So readiness waits
+for a label other than `default` only when the session requested a `reasoningEffort` other
+than `none`. Without one, `ready` can still precede the configuration (§5.3), including
+when the effort comes from `configOverrides`, a profile or config.toml.
+
+**Every requested effort but `none` gets a label once configured.** On `gpt-6-luna`, which
+lists `low` to `max`: `minimal`, `xhigh` and `max` read as themselves, and `ultra`, which it
+does not list, read `medium`, the model's default effort. A resumed thread, with no effort
+override, came back with the effort and model it started
+with (`GPT-6-Luna low`). With `-c model_reasoning_effort="low"` it came back as
+`GPT-6.2-Sol low` (Codex's default model, since the config names none, at the requested effort), and resumed with
+`high` after starting at `low` it read `GPT-6.2-Sol high`. No resumed footer read `default`
+after its configuration. Elwood waits for the label until the 60 s backstop at the latest,
+so a footer that never shows the effort cannot hold readiness for good
+(`codex_effort_unconfirmed`). C-API-28, C-E2E-34.

@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import {
   codexComposerClearance,
-  codexComposerConfigured,
+  codexReadinessEvidence,
 } from "../../src/codex/screen/clearance.ts";
 
 test.each([
@@ -25,7 +25,7 @@ test.each([
   "  medium · C:\\project",
 ])("C-API-28 C-SPEED-01 recognizes configured native footer %s", (footer) => {
   const frame = `› Ask Codex to do anything\n${footer}\n  ? for shortcuts`;
-  expect(codexComposerConfigured(frame)).toBe(true);
+  expect(codexReadinessEvidence(frame)).toBe(true);
   expect(codexComposerClearance(frame)).toBe(true);
 });
 
@@ -37,7 +37,7 @@ test.each([
   "  xhigh fast · /tmp/project\n  Press Enter to continue",
 ])("C-API-28 C-SPEED-01 unknown footer %s still holds input", (footer) => {
   const frame = `› Ask Codex to do anything\n${footer}`;
-  expect(codexComposerConfigured(frame)).toBe(false);
+  expect(codexReadinessEvidence(frame)).toBe(false);
   expect(codexComposerClearance(frame)).toBe(false);
 });
 

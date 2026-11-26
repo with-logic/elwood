@@ -1,4 +1,5 @@
 /** Private current-Codex PTY and parent-state checks for native questions (PRD §12). */
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -30,9 +31,33 @@ export const nativeQuestionSize = { cols: 140, rows: 45 } as const;
 export function codexQuestionProofSkip(turns: string): string | false {
   if (process.env["ELWOOD_NATIVE_QUESTIONS_PROOF"] !== "1")
     return `set ELWOOD_NATIVE_QUESTIONS_PROOF=1 for ${turns}`;
-  return existsSync(questionCodexBinary) && existsSync(join(homedir(), ".codex/auth.json"))
-    ? false
-    : "requires pinned Codex and auth";
+  return pinnedCodexSkip();
+}
+
+/**
+ * Why the pinned Codex cannot run, or false when it can: its binary, code-mode host and version,
+ * and the auth its sandbox copies. The installed binary can update past the pin.
+ */
+export function pinnedCodexSkip(): string | false {
+  if (!(existsSync(questionCodexBinary) && existsSync(join(homedir(), ".codex/auth.json"))))
+    return "requires pinned Codex and auth";
+  const installed = realpathSync(questionCodexBinary);
+  if (!existsSync(join(dirname(installed), "codex-code-mode-host")))
+    return "requires the pinned Codex code-mode host";
+  // `--version` gets a throwaway CODEX_HOME, as the sandbox's own version check does.
+  const home = mkdtempSync(join(tmpdir(), "elwood_codex_version-"));
+  try {
+    const found = spawnSync(installed, ["--version"], {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { ...process.env, CODEX_HOME: home },
+    }).stdout?.trim();
+    return found === questionCodexVersion
+      ? false
+      : `requires ${questionCodexVersion}, found ${found || "no version"}`;
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 }
 /** Let Codex flush its private home before escalating a stopped capture to SIGKILL. */
 const shutdownGraceMs = 2_000;
