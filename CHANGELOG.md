@@ -92,6 +92,12 @@ back each entry are listed in `prd/14-conformance.md`.
   then released queued input onto the screen that replaced it. A hook, deadline
   or backstop that meets undrawn output now judges the frame it draws, or the
   last frame if that render fails.
+- A `status` or `activity` listener that throws while Elwood observes a
+  rendered frame, such as one handling a dialog that blocks the session, no
+  longer drops that frame's `terminal:data`, its status and attention
+  activities, or readiness's view of it. A new content-free
+  `frame_observer_failed` warning reports the first such failure in a session.
+  A throwing `status` listener also no longer skips that status's `activity`.
 
 ## [0.8.0] - 2026-11-25
 
