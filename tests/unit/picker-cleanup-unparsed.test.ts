@@ -43,6 +43,10 @@ test("C-API-55 the footer-cut picker shows its own window, which no grammar pars
   expect(claudeModelPicker.isOwnPickerWindow(footerCut, { opened: true })).toBe(true);
   // Without the transaction's authority, nothing on screen is our picker.
   expect(claudeModelPicker.isOwnPickerWindow(footerCut, { opened: false })).toBe(false);
+  // A row numbered past the window's opening position is not the picker's own window.
+  const misplaced = footerCut.replace("❯ 1.  Default", "❯ 4.  Default");
+  expect(misplaced).not.toBe(footerCut);
+  expect(claudeModelPicker.isOwnPickerWindow(misplaced, { opened: true })).toBe(false);
 });
 
 test("C-API-55 cleanup closes its own unparsed picker, then queued input is delivered", async () => {
