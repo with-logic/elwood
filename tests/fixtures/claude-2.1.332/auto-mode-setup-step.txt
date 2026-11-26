@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.332
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /tmp/ELWOOD_CAPTURE/project
+
+
+❯ Reply with exactly OK.
+
+⏺ OK
+
+✻ Cogitated for 0s · done 2:31 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Teach auto mode about your environment?
+
+  Claude Code reads this project, your recent Claude sessions, and optionally your shell history and other repositories. Claude analyzes
+  this data and customizes auto mode to make better decisions.
+
+    How you use Claude here     Mixed
+  ❯ Also scan shell history     on
+    Also scan your other repos  off
+
+    Continue
+
+  ↑/↓ to navigate · Space to toggle · Esc to cancel

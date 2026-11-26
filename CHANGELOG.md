@@ -30,6 +30,22 @@ back each entry are listed in `prd/14-conformance.md`.
   stalled until it failed with `question_answer_failed` and closed the request
   as `unavailable`.
 
+- Report Claude's auto-mode setup offer, which can appear right after a turn
+  ends, as `blocked` with attention label `claude-auto-mode-offer`. A
+  `sendMessage` sent while it is visible now waits for it to close. Before, its
+  Enter answered the offer and the message was lost. When any Claude dialog
+  closes over a paste whose Enter it held, the paste now submits instead of
+  leaving the session `blocked`; awaited `send`/`stream` input that raw input
+  took over during that hold rejects without its Enter, even if the dialog stays
+  open. When a Claude turn ends in auto mode, queued input now waits until
+  Claude's idle composer has stayed unchanged for 500 ms, at most 5 s, so an
+  offer Claude has mounted but not yet painted cannot take its Enter. This holds
+  at widths where the offer's title fits on one row (about 41 columns), and the
+  next turn ends the wait. If the 5 s limit releases input from a screen that
+  never settled, a content-free `turn_end_hold_expired` warning reports it.
+  `elwood run` no longer fails when the offer appears after its prompt's turn
+  has ended.
+
 ## [0.8.0] - 2026-11-25
 
 - Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,
