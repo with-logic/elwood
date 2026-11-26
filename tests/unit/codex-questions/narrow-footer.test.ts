@@ -1,4 +1,4 @@
-/** Codex 0.172 wraps a queued panel's footer hints in a narrow pane (PRD §5.10, C-ATTN-02). */
+/** Codex 0.172 wraps question footers in a narrow pane (PRD §5.3/§5.10, C-ATTN-02, C-QUESTION-04). */
 import { expect, test } from "vitest";
 import { blockingQuestionVisible } from "../../../src/codex/questions/chrome.ts";
 import { questionView } from "../../../src/codex/questions/frame.ts";
@@ -6,35 +6,37 @@ import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { nativeFrame } from "./native-frame.ts";
 
 const at = (name: string) => nativeFrame(name, "0.172.0");
-// The color choice at 60 columns, `⇧← next question` on a row of its own.
-const first = at("queued-footer-wrapped-60-first.json");
-// The note editor at 50 columns, wrapped the same way.
-const second = at("queued-footer-wrapped-50-second.json");
-// The literal editor at 60 columns, whose shorter footer fits on one row.
-const third = at("queued-footer-60-third.json");
+// The queued color choice at 60 columns, `⇧← next question` on a row of its own.
+const queuedFirst = at("queued-footer-wrapped-60-first.json");
+// The queued note editor at 50 columns, wrapped the same way.
+const queuedSecond = at("queued-footer-wrapped-50-second.json");
+// The last queued editor at 60 columns, whose shorter footer fits on one row.
+const queuedLast = at("queued-footer-60-third.json");
+// The first of three modal questions: its footer splits after the second hint at 60 and 50
+// columns, and takes a row per hint at 40.
+const modal = [60, 50, 40].map((cols) => [cols, at(`modal-footer-wrapped-${cols}.json`)] as const);
 
-/** The frame with its footer rows, the last two non-blank rows, replaced by `footer`. */
+/** The frame with its two footer rows replaced by `footer`. */
 function withFooter(frame: QuestionFrame, footer: readonly string[]): QuestionFrame {
   const end = frame.lines.findLastIndex((line) => line.trim() !== "");
   const lines = [...frame.lines.slice(0, end - 1), ...footer, ...frame.lines.slice(end + 1)];
   return { ...frame, lines, text: lines.join("\n") };
 }
+const footerHint = /^(?:enter submit|⇧|tab |←\/→|esc to interrupt)/;
 
 test.each([
-  ["the first choice, wrapped at 60 columns", first, 0, 0],
-  ["the second editor, wrapped at 50 columns", second, 1, undefined],
-  ["the third editor on one row at 60 columns", third, 2, undefined],
-])("C-ATTN-02 a queued panel keeps its question with %s", (_, frame, index, selected) => {
+  ["the first choice, wrapped at 60 columns", queuedFirst, 0, 0],
+  ["the second editor, wrapped at 50 columns", queuedSecond, 1, undefined],
+  ["the last editor on one row at 60 columns", queuedLast, 2, undefined],
+])("C-QUESTION-04 C-ATTN-02 a queued panel keeps %s", (_, frame, index, selected) => {
   const view = questionView(frame);
   expect(view).toMatchObject({ kind: "queued", count: 3, index, selected });
-  expect(view?.body.some((line) => line.startsWith("enter submit") || line.startsWith("⇧"))).toBe(
-    false,
-  );
+  expect(view?.body.some((line) => footerHint.test(line))).toBe(false);
   expect(blockingQuestionVisible(frame.text)).toBe(true);
 });
 
-test("C-ATTN-02 a queued panel keeps its question with the hints Codex wraps at 40 columns", () => {
-  const narrow = withFooter(first, [
+test("C-QUESTION-04 C-ATTN-02 a queued panel keeps the hints Codex wraps at 40 columns", () => {
+  const narrow = withFooter(queuedFirst, [
     "  enter submit   ⌃] skip",
     "  ⇧→ main prompt   ⇧← next question",
   ]);
@@ -42,17 +44,56 @@ test("C-ATTN-02 a queued panel keeps its question with the hints Codex wraps at 
   expect(blockingQuestionVisible(narrow.text)).toBe(true);
 });
 
+test.each(
+  modal,
+)("C-QUESTION-04 C-ATTN-02 a modal question keeps its wrapped footer at %i columns", (_, frame) => {
+  const view = questionView(frame);
+  expect(view).toMatchObject({ kind: "blocking", count: 3, index: 0, selected: 0, notes: false });
+  expect(view?.body.some((line) => footerHint.test(line))).toBe(false);
+  expect(view?.body).toContain("ELWOOD_MODAL_COLOR: Which color?");
+  expect(blockingQuestionVisible(frame.text)).toBe(true);
+});
+
+test("C-QUESTION-04 C-ATTN-02 a modal notes editor keeps its wrapped footer", () => {
+  const [, frame] = modal[0]!;
+  const notes = withFooter(frame, ["  tab or esc to clear notes", "  enter to submit answer"]);
+  expect(questionView(notes)).toMatchObject({ kind: "blocking", count: 3, notes: true });
+  expect(blockingQuestionVisible(notes.text)).toBe(true);
+});
+
 test.each([
-  ["hints out of order", ["  ⌃] skip   ⇧→ main prompt", "  enter submit   ⇧← next question"]],
   [
-    "more rows than hints",
-    ["  enter submit", "  ⌃] skip", "  ⇧→ main prompt", "  ⇧← next", "  question"],
+    "queued hints out of order",
+    ["  ⌃] skip   ⇧→ main prompt", "  enter submit   ⇧← next question"],
   ],
-  ["a missing hint", ["  enter submit   ⇧→ main prompt", "  ⇧← next question"]],
-  ["an unknown hint row", ["  enter submit   ⌃] skip   ⇧→ main prompt", "  ⇧← next page"]],
-  ["hints run together", ["  enter submit ⌃] skip   ⇧→ main prompt", "  ⇧← next question"]],
-])("C-ATTN-02 a wrapped queued footer refuses %s", (_, footer) => {
-  const frame = withFooter(first, footer);
+  [
+    "a queued hint split across rows",
+    ["  enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next", "  question"],
+  ],
+  ["a missing queued hint", ["  enter submit   ⇧→ main prompt", "  ⇧← next question"]],
+  ["an unknown queued hint", ["  enter submit   ⌃] skip   ⇧→ main prompt", "  ⇧← next page"]],
+  ["queued hints run together", ["  enter submit ⌃] skip   ⇧→ main prompt", "  ⇧← next question"]],
+  [
+    "modal hints out of order",
+    [
+      "  ←/→ to navigate questions | esc to interrupt",
+      "  tab to add notes | enter to submit answer",
+    ],
+  ],
+  [
+    "queued and modal hints mixed",
+    ["  tab to add notes | enter to submit answer", "  ⇧← next question"],
+  ],
+])("C-QUESTION-04 C-ATTN-02 a wrapped footer refuses %s", (_, footer) => {
+  const frame = withFooter(queuedFirst, footer);
   expect(questionView(frame)).toBeUndefined();
   expect(blockingQuestionVisible(frame.text)).toBe(false);
+});
+
+test("C-QUESTION-04 C-ATTN-02 a wrapped modal footer still needs its question header", () => {
+  const [, frame] = modal[0]!;
+  const lines = frame.lines.map((line) => line.replace("Question 1/3", "Questions 1/3"));
+  const headless = { ...frame, lines, text: lines.join("\n") };
+  expect(questionView(headless)).toBeUndefined();
+  expect(blockingQuestionVisible(headless.text)).toBe(false);
 });

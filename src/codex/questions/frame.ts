@@ -6,8 +6,7 @@ import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
   type ModalQuestionFooter,
-  modalQuestionFooter,
-  queuedFooterStart,
+  questionFooter,
   queuedPanelHeader,
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
@@ -64,34 +63,33 @@ const nativeQuestionHeader = /^ {2}Question (\d+)\/(\d+) \(\d+ unanswered\)$/;
 export function questionView(frame: QuestionFrame): QuestionView | undefined {
   const lines = frame.lines.map((line) => line.trimEnd());
   const end = lines.findLastIndex((line) => line.trim().length > 0);
-  const footer = lines[end]?.trim() ?? "";
-  // The panel's body ends above its footer, which a narrow pane wraps onto more rows.
-  let bodyEnd = queuedFooterStart(lines, end);
   if (frame.cursorRow < 0 || frame.cursorRow > end + footerCursorAllowanceRows) return undefined;
+  // The panel's body ends above its footer, which a narrow pane wraps onto more rows.
+  const footer = questionFooter(lines, end);
+  if (!footer) return undefined;
   let start: number;
   let count: number;
   let index: number;
   let kind: QuestionView["kind"];
-  const modal = modalQuestionPosition(lines, modalQuestionFooter(footer));
-  if (modal) {
-    ({ start, count, index } = modal);
-    kind = "blocking";
-    bodyEnd = end;
-  } else if (bodyEnd === undefined) return undefined;
-  else {
+  if (footer.kind === "queued") {
     start = lines.lastIndexOf(queuedPanelHeader);
     if (start < 0) return undefined;
     const position = lines
-      .slice(start + 1, bodyEnd)
+      .slice(start + 1, footer.start)
       .map((line) => line.trim())
       .find((line) => /^\d+ of \d+$/.test(line));
     const match = position?.match(/^(\d+) of (\d+)$/);
     index = match ? Number(match[1]) - 1 : 0;
     count = match ? Number(match[2]) : 1;
     kind = "queued";
+  } else {
+    const modal = modalQuestionPosition(lines, footer.kind);
+    if (!modal) return undefined;
+    ({ start, count, index } = modal);
+    kind = "blocking";
   }
   if (!questionCursor(frame, lines, start, kind) || index < 0 || index >= count) return undefined;
-  const rawBody = frame.lines.slice(start + 1, bodyEnd);
+  const rawBody = frame.lines.slice(start + 1, footer.start);
   const body = rawBody.map((line) => line.trim());
   return {
     kind,
@@ -100,7 +98,7 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     body,
     rawBody,
     selected: nativeSelection(rawBody, kind === "queued" && count > 1),
-    notes: modal?.notes ?? false,
+    notes: footer.kind === "notes",
     cursor: {
       row: frame.cursorRow - start - 1,
       visible: frame.cursorVisible,
@@ -109,21 +107,14 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
     },
   };
 }
-const modalEditorLayouts = {
-  withNavigation: { requireSingleQuestion: false, notes: false },
-  withoutNavigation: { requireSingleQuestion: true, notes: false },
-  notes: { requireSingleQuestion: false, notes: true },
-} satisfies Record<ModalQuestionFooter, { requireSingleQuestion: boolean; notes: boolean }>;
-
-function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooter | undefined) {
-  if (!footer) return undefined;
-  const { requireSingleQuestion, notes } = modalEditorLayouts[footer];
+function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFooter) {
   const start = lines.findLastIndex((line) => nativeQuestionHeader.test(line));
   const match = nativeQuestionHeader.exec(lines[start] ?? "");
   if (!match) return undefined;
   const count = Number(match[2]);
-  if (requireSingleQuestion && count !== 1) return undefined;
-  return { start, count, index: Number(match[1]) - 1, notes };
+  // Codex leaves out the navigation hint only for a single question.
+  if (footer === "withoutNavigation" && count !== 1) return undefined;
+  return { start, count, index: Number(match[1]) - 1 };
 }
 /** Native choice lists hide the cursor; a working redraw leaves it above the panel, after the
  * last working-row cell Codex changed: the pulsing glyph, an elapsed-time digit or the row's end. */
