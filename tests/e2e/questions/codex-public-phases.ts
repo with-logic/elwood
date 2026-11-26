@@ -11,9 +11,10 @@ import {
   queuedLiteralAnswer,
 } from "./codex-public-answers.ts";
 import {
-  publicCodexBlueAnswer,
+  publicCodexOptionAnswer,
   publicCodexQuestionRecords,
   type publicCodexQuestionSandbox,
+  waitForPublicCodexQuestionsBeforeReply as waitBeforeReply,
   waitForPublicCodexQuestion as waitFor,
 } from "./codex-public-sandbox.ts";
 
@@ -24,26 +25,6 @@ type Phase = {
   readonly signal: AbortSignal;
   readonly note: { readonly text: string; readonly accepted: string };
 };
-
-/** A turn must raise its expected questions before it can finish or fail. */
-async function waitBeforeReply(check: () => boolean, reply: Promise<string>, signal: AbortSignal) {
-  const waiting = new AbortController();
-  const abort = () => waiting.abort(signal.reason);
-  signal.addEventListener("abort", abort, { once: true });
-  try {
-    signal.throwIfAborted();
-    await Promise.race([
-      waitFor(check, waiting.signal),
-      reply.then(() => {
-        if (!check()) throw new Error("Native turn finished before raising expected questions");
-      }),
-    ]);
-    signal.throwIfAborted();
-  } finally {
-    signal.removeEventListener("abort", abort);
-    waiting.abort();
-  }
-}
 
 export async function publicCodexQueuedPhase(
   input: Phase & {
@@ -99,7 +80,7 @@ export async function publicCodexQueuedPhase(
   assert.equal(settled, false);
   assert.equal(live.status, "blocked");
   signal.throwIfAborted();
-  await facade.answerQuestions(requests[0]!.id, [publicCodexBlueAnswer(requests[0]!)], {
+  await facade.answerQuestions(requests[0]!.id, [publicCodexOptionAnswer(requests[0]!, "Blue")], {
     timeoutMs: 30_000,
   });
   assert.equal((await reply).trim(), "ELWOOD_ASYNC_DONE");
