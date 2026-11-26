@@ -62,7 +62,7 @@ test.each([
     }
     expect(attentionAt).toHaveLength(1);
     expect(events.filter((event) => event.promptGeneration !== undefined)).toEqual([]);
-    expect(ptys[0]!.writes).toHaveLength(20);
+    expect(ptys[0]!.writes).toEqual(["2"]);
     const fresh = `${sameVersion ? banner : nextBanner}\n${choices}`;
     await paint(fresh);
     await paint(fresh);
@@ -72,13 +72,14 @@ test.each([
     expect(changed[0]?.promptGeneration).toBeGreaterThan(1);
     expect(session.status).toBe("blocked");
     expect(events.filter((event) => event.kind === "startup_prompt")).toEqual([]);
-    expect(ptys[0]!.writes.length).toBeGreaterThan(20);
     await vi.advanceTimersByTimeAsync(
       attentionAt[0]! + codexUpdateAttentionGraceMs - Date.now() + 1,
     );
     expect(blocked).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(attentionAt[1]! + codexUpdateAttentionGraceMs - Date.now());
     expect(blocked).toHaveBeenCalledExactlyOnceWith("codex-update-prompt");
+    // The fresh appearance got its own key once its prompt had settled.
+    expect(ptys[0]!.writes).toEqual(["2", "2"]);
   } finally {
     guard.dispose();
     vi.useRealTimers();

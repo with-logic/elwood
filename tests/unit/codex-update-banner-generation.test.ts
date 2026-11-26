@@ -53,11 +53,11 @@ test("C-CODEX-12 an exhausted appearance can start a fresh attempt when its bann
   const initial = responder.handle(frame, write, () => frame);
   await vi.runAllTimersAsync();
   await expect(initial.outcomes[0]?.settled).resolves.toBe("cancelled");
-  expect(writes).toHaveLength(20);
+  expect(writes).toEqual(["2"]);
   expect(responder.handle(frame, write, () => frame).outcomes).toEqual([]);
   frame = next;
   const fresh = responder.handle(frame, write, () => frame);
-  expect(writes).toHaveLength(21);
+  expect(writes).toEqual(["2", "2"]);
   expect(fresh.outcomes).toHaveLength(1);
   frame = codexSmallComposer;
   await vi.runAllTimersAsync();

@@ -1,0 +1,198 @@
+/**
+ * After Elwood's skip key, Codex 0.171+ repaints its boot composer or resume placeholder
+ * before its configured composer. The skip owns that repaint: input stays held and no
+ * dialog is reported until the configured composer, a bound, or another owner ends it
+ * (PRD §5.5, C-CODEX-27).
+ */
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { codexComposerClearance } from "../../src/codex/screen/clearance.ts";
+import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
+import { answeredRepaintBoundMs, repaintGraceMs } from "../../src/codex/update/skip-attempt.ts";
+import type { AutomationWriteResult } from "../../src/core/startup/barrier.ts";
+import { codexTrust } from "../fixtures/trust-composer.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
+
+const capture = (name: string) => capturedFrame(`codex-0.172.0/update/${name}`);
+const offer = capture("offer-standalone-100x30");
+const start = ["start-boot-partial", "start-boot-composer", "start-notice-partial"].map(capture);
+const resume = ["resume-placeholder", "resume-notice-partial"].map(capture);
+const startComposer = capture("start-skipped-composer");
+const resumeComposer = capture("resume-skipped-composer");
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+/** A responder fed frames as a session renders them; `onStateChange` is the session's refresh. */
+function responderOnOffer(
+  onStateChange: () => void,
+  writeAutomation?: () => Promise<AutomationWriteResult>,
+) {
+  let frame = offer;
+  const writes: string[] = [];
+  const responder = new CodexStartupPromptResponder(
+    "repaint",
+    false,
+    onStateChange,
+    codexComposerClearance,
+    () => false,
+  );
+  const show = (text: string) => {
+    frame = text;
+    const write = (key: string) => void writes.push(key);
+    const result = responder.handle(text, write, () => frame, writeAutomation ?? write);
+    responder.observeClearance(text);
+    return result;
+  };
+  return { responder, show, writes };
+}
+
+/** A responder whose skip key has been written. */
+async function skipped(onStateChange: () => void = vi.fn()) {
+  const { responder, show, writes } = responderOnOffer(onStateChange);
+  const [skip] = show(offer).outcomes;
+  let settled: unknown;
+  void skip?.settled?.then((value) => {
+    settled = value;
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  if (writes.join() !== "2") throw new Error(`the offer took ${JSON.stringify(writes)}`);
+  return {
+    responder,
+    show,
+    writes,
+    expired: onStateChange,
+    settled: () => settled,
+    /** Shows `text` and returns whether input is held after it. */
+    async holdsInputAfter(text: string) {
+      show(text);
+      await vi.advanceTimersByTimeAsync(0);
+      return responder.inputBlocking;
+    },
+  };
+}
+
+test.each([
+  ["start", start, startComposer],
+  ["resume", resume, resumeComposer],
+] as const)("C-CODEX-27 a %s holds input over Codex's repaint and answers on its composer", async (_launch, repaint, composer) => {
+  const s = await skipped();
+  for (const frame of repaint) expect(await s.holdsInputAfter(frame)).toBe(true);
+  expect(s.settled()).toBe("answered");
+  expect(await s.holdsInputAfter(composer)).toBe(false);
+  await vi.advanceTimersByTimeAsync(answeredRepaintBoundMs);
+  expect(s.writes).toEqual(["2"]);
+  expect(s.expired).not.toHaveBeenCalled();
+  s.responder.dispose();
+});
+
+test("C-CODEX-27 the grace bound releases a repaint that never shows Codex's composer", async () => {
+  const s = await skipped();
+  expect(await s.holdsInputAfter("")).toBe(true);
+  await vi.advanceTimersByTimeAsync(repaintGraceMs - 1);
+  expect(s.responder.inputBlocking).toBe(true);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(s.responder.inputBlocking).toBe(false);
+  expect(s.settled()).toBe("cancelled");
+  expect(s.expired).toHaveBeenCalledOnce();
+  // A released repaint is not taken back by a later frame.
+  expect(await s.holdsInputAfter(start[0]!)).toBe(false);
+  expect(s.writes).toEqual(["2"]);
+});
+
+test("C-CODEX-27 the answered bound releases a repaint that never shows the configured composer", async () => {
+  const s = await skipped();
+  expect(await s.holdsInputAfter(start[1]!)).toBe(true);
+  expect(s.settled()).toBe("answered");
+  await vi.advanceTimersByTimeAsync(answeredRepaintBoundMs - 1);
+  expect(s.responder.inputBlocking).toBe(true);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(s.responder.inputBlocking).toBe(false);
+  expect(s.settled()).toBe("answered");
+  expect(s.expired).toHaveBeenCalledOnce();
+});
+
+test("C-CODEX-27 a dialog after the key ends the repaint unanswered", async () => {
+  const s = await skipped();
+  expect(await s.holdsInputAfter(start[0]!)).toBe(true);
+  expect(
+    await s.holdsInputAfter("Enable the new context cache?\n› 1. Enable now\n  2. Later"),
+  ).toBe(false);
+  expect(s.settled()).toBe("cancelled");
+  // The released repaint is not taken back by Codex's composer.
+  expect(await s.holdsInputAfter(start[1]!)).toBe(false);
+  await vi.advanceTimersByTimeAsync(answeredRepaintBoundMs);
+  expect(s.settled()).toBe("cancelled");
+  expect(s.writes).toEqual(["2"]);
+  expect(s.expired).not.toHaveBeenCalled();
+});
+
+test("C-CODEX-27 a trust prompt after the key leaves the screen to trust", async () => {
+  const s = await skipped();
+  expect(await s.holdsInputAfter(start[0]!)).toBe(true);
+  s.show(codexTrust);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(s.settled()).toBe("cancelled");
+  await vi.advanceTimersByTimeAsync(answeredRepaintBoundMs);
+  expect(s.writes).toEqual(["2"]);
+  expect(s.expired).not.toHaveBeenCalled();
+});
+
+test("C-CODEX-27 the prompt drawn again after the key is a new appearance", async () => {
+  const s = await skipped();
+  expect(await s.holdsInputAfter(start[0]!)).toBe(true);
+  const [again] = s.show(offer).outcomes;
+  await vi.advanceTimersByTimeAsync(0);
+  expect(s.settled()).toBe("cancelled");
+  expect(s.responder.inputBlocking).toBe(false);
+  expect(s.writes).toEqual(["2", "2"]);
+  expect(await s.holdsInputAfter(start[1]!)).toBe(true);
+  await expect(again?.settled).resolves.toBe("answered");
+  expect(await s.holdsInputAfter(startComposer)).toBe(false);
+});
+
+test.each([
+  ["caller input", (responder: CodexStartupPromptResponder) => responder.callerInput()],
+  ["disposal", (responder: CodexStartupPromptResponder) => responder.dispose()],
+])("C-CODEX-27 %s releases the repaint", async (_name, end) => {
+  const s = await skipped();
+  expect(await s.holdsInputAfter(start[0]!)).toBe(true);
+  end(s.responder);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(s.responder.inputBlocking).toBe(false);
+  expect(s.settled()).toBe("cancelled");
+  await vi.advanceTimersByTimeAsync(answeredRepaintBoundMs);
+  expect(s.expired).not.toHaveBeenCalled();
+});
+
+test("C-CODEX-27 a newer prompt before Codex's repaint takes the screen from the old key", async () => {
+  const s = await skipped();
+  // A newer release's prompt offers no safe choice, so no attempt of its own starts.
+  const newer = offer.replace("99.0.0", "99.1.0").replace(/^ {2}[23]\. Skip.*\n/gm, "");
+  expect(s.show(newer).outcomes).toEqual([]);
+  expect(await s.holdsInputAfter("")).toBe(false);
+  await vi.advanceTimersByTimeAsync(250);
+  expect(s.settled()).toBe("cancelled");
+  expect(s.writes).toEqual(["2"]);
+});
+
+test("C-CODEX-27 a key that has not gone out owns no repaint", async () => {
+  const pending = Promise.withResolvers<AutomationWriteResult>();
+  const { responder, show } = responderOnOffer(vi.fn(), () => pending.promise);
+  const [skip] = show(offer).outcomes;
+  await vi.advanceTimersByTimeAsync(0);
+  // Codex's boot composer while the key is still on its way out.
+  show(start[1]!);
+  expect(responder.inputBlocking).toBe(false);
+  pending.resolve("withheld");
+  await expect(skip?.settled).resolves.toBe("cancelled");
+  responder.dispose();
+});
+
+test("C-CODEX-27 a throwing session listener cannot escape the repaint bound", async () => {
+  const s = await skipped(() => {
+    throw new Error("a host listener failed");
+  });
+  expect(await s.holdsInputAfter("")).toBe(true);
+  await vi.advanceTimersByTimeAsync(repaintGraceMs);
+  expect(s.responder.inputBlocking).toBe(false);
+});
