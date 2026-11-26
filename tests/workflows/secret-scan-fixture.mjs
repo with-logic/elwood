@@ -1,5 +1,4 @@
-/** Provides Git fixtures and the shell step for PRD §16 secret-scan tests. */
-import { execFileSync } from "node:child_process";
+/** Provides the shell step and Docker stub for PRD §16 secret-scan tests. */
 import { readFileSync } from "node:fs";
 
 export const workflow = readFileSync(
@@ -29,26 +28,3 @@ export const dockerWithFinding = [
   "  return 20",
   "}",
 ].join("\n");
-
-export function git(cwd, ...args) {
-  return execFileSync(
-    "git",
-    [
-      "-c",
-      "user.name=Fixture",
-      "-c",
-      "user.email=fixture@example.test",
-      "-c",
-      "commit.gpgsign=false",
-      "-c",
-      "core.hooksPath=/dev/null",
-      ...args,
-    ],
-    { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  ).trim();
-}
-
-export function commit(cwd, message) {
-  git(cwd, "commit", "--allow-empty", "-m", message);
-  return git(cwd, "rev-parse", "HEAD");
-}

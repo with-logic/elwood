@@ -32,8 +32,13 @@ type ProbeSession<T extends AgentModelOption = AgentModelOption> = Pick<
 
 /** Adapter hooks for a probe: how to start the session and how to remove ALL its state. */
 export type ProbeAdapter<T extends AgentModelOption> = {
-  /** Starts the throwaway session against the probe's owned state directory. */
-  readonly start: () => Promise<ProbeSession<T>>;
+  /**
+   * Starts the throwaway session against the probe's owned state directory. `refuse`
+   * records that error for a prompt the probe must not answer (§5.3). It may be called
+   * while `start` is still pending; once `start` returns, the recorded refusal is raced
+   * against readiness, so it ends the probe without waiting for readiness to run out.
+   */
+  readonly start: (refuse: (error: Error) => void) => Promise<ProbeSession<T>>;
   /**
    * Removes ALL probe state (its owned temp directory and everything under it).
    * Runs on EVERY outcome — success, readiness/picker failure, AND a start failure
@@ -54,9 +59,10 @@ export async function probeModels<T extends AgentModelOption>(
   adapter: ProbeAdapter<T>,
   options: ListModelsOptions,
 ): Promise<readonly T[]> {
+  const refusal = probeRefusal();
   let session: ProbeSession<T>;
   try {
-    session = await adapter.start();
+    session = await adapter.start(refusal.refuse);
   } catch (error) {
     // Adapter startup can allocate a state directory / runtime files BEFORE the
     // bridge or PTY fails, so "no returned session" does not mean "nothing
@@ -65,7 +71,7 @@ export async function probeModels<T extends AgentModelOption>(
     throw error;
   }
   try {
-    return await runProbe(session, options);
+    return await runProbe(session, options, refusal.refused);
   } finally {
     // Always sweep the owned state directory, even after a successful teardown.
     adapter.removeState();
@@ -75,10 +81,12 @@ export async function probeModels<T extends AgentModelOption>(
 async function runProbe<T extends AgentModelOption>(
   session: ProbeSession<T>,
   options: ListModelsOptions,
+  refused: Promise<never>,
 ): Promise<readonly T[]> {
   let models: readonly T[];
   try {
-    await session.waitForStatus((status) => status === "ready");
+    // The race observes the loser's later settlement, so neither can go unhandled.
+    await Promise.race([session.waitForStatus((status) => status === "ready"), refused]);
     models = await session.listModels(
       options.timeoutMs === undefined ? undefined : { timeoutMs: options.timeoutMs },
     );
@@ -94,6 +102,17 @@ async function runProbe<T extends AgentModelOption>(
   // session is a real defect the caller should learn about (C-API-41).
   await session.teardown();
   return models;
+}
+
+/** A rejection the adapter can trigger before anything is awaiting it. */
+function probeRefusal(): {
+  readonly refuse: (error: Error) => void;
+  readonly refused: Promise<never>;
+} {
+  const { promise, reject } = Promise.withResolvers<never>();
+  // Handled here so a refusal during start is not an unhandled rejection; the race rethrows it.
+  promise.catch(() => undefined);
+  return { refuse: reject, refused: promise };
 }
 
 /**

@@ -6,6 +6,13 @@ name: Release
 #      npm, and creates the GitHub release. (Primary path.)
 #   2. Pushing a tag `vX.Y.Z` directly skips the PR flow and ships.
 #   3. `workflow_dispatch` from the Actions tab with a version input.
+#
+# Re-running a run, whether its failed jobs or all of them, finishes the
+# release. The lightweight tag this workflow pushes on the release commit is
+# reused, and a version this workflow already published from that commit and a
+# published GitHub release are left as they are. Any other tag of that name
+# fails the run. A re-run cannot publish a version older than one already on
+# npm: npm refuses to move `latest` back, so the publish step fails.
 on:
   push:
     branches: [main]
@@ -82,8 +89,13 @@ jobs:
           fi
 
           candidate_tag="v$new_version"
-          if git rev-parse -q --verify "refs/tags/$candidate_tag" >/dev/null 2>&1; then
-            echo "::error::version advanced to $new_version but tag $candidate_tag already exists; aborting"
+          # A re-run finds the lightweight tag its first attempt pushed, whose
+          # ref names this commit. The ref of a tag on another commit, or of an
+          # annotated tag, names something else, and the publish job's tag push
+          # would reject it.
+          existing_tag_ref_oid="$(git rev-parse -q --verify "refs/tags/$candidate_tag" || true)"
+          if [ -n "$existing_tag_ref_oid" ] && [ "$existing_tag_ref_oid" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::version advanced to $new_version but tag $candidate_tag already exists and is not a lightweight tag on this commit; aborting"
             exit 1
           fi
 
@@ -217,12 +229,15 @@ jobs:
 
       - name: Create tag
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
+          TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ needs.resolve.outputs.tag }}"
-          git push origin "${{ needs.resolve.outputs.tag }}"
+          # Pushes a lightweight tag. A re-run after a failed publish pushes the
+          # tag its first attempt pushed, which succeeds as a no-op; Git rejects
+          # the push when the tag names anything else.
+          git push origin "$RELEASE_COMMIT:refs/tags/$TAG"
 
       # Publishes via npm trusted publishing (OIDC) — no NPM_TOKEN required.
       # This relies on a trusted publisher configured at npmjs.com for
@@ -242,8 +257,65 @@ jobs:
       # configure the trusted publisher at
       # npmjs.com/package/@with-logic/elwood/access and every later release
       # runs tokenlessly through this workflow.
+      #
+      # One lookup asks the registry for this version. The registry records the
+      # commit a version was published from as `gitHead`, which any publisher
+      # can set, and the publishing account as `_npmUser`, which only trusted
+      # publishing sets to GitHub Actions. `npm view` redacts the ID of the
+      # trusted-publisher configuration, so the step treats any trusted
+      # publisher as this workflow.
+      # - Not on npm (E404): publish.
+      # - Published from this commit through trusted publishing: a re-run has
+      #   nothing left to publish.
+      # - Published any other way: fail, because npm never replaces a version.
+      #   The log names the commit and the kind of publisher, never the
+      #   publishing account.
+      # - Anything else, including a failed lookup, an answer without a commit
+      #   or publisher, or no answer: fail.
       - name: Publish to npm
-        run: npm publish --access public
+        env:
+          RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          package="$(node -p 'require("./package.json").name')@$VERSION"
+          status=0
+          found="$(npm view "$package" gitHead _npmUser.email --json 2>/dev/null)" || status=$?
+          outcome="$(node -e '
+            const [found, status, commit] = process.argv.slice(1);
+            const answer = Object(found ? JSON.parse(found) : {});
+            const head = answer.gitHead;
+            const email = answer["_npmUser.email"];
+            const trusted = email === "npm-oidc-no-reply@github.com";
+            if (status !== "0") {
+              const code = answer.error?.code ?? `npm-exit-${status}`;
+              console.log(code === "E404" ? "unpublished" : `lookup-failed ${code}`);
+            } else if (typeof head !== "string" || typeof email !== "string") {
+              console.log("lookup-incomplete");
+            } else if (head === commit && trusted) {
+              console.log("published-here");
+            } else {
+              const publisher = trusted ? "trusted publishing" : "another account";
+              console.log(`published-elsewhere from ${head} by ${publisher}`);
+            }
+          ' "$found" "$status" "$RELEASE_COMMIT")"
+          echo "Registry lookup for $package: ${outcome:-no answer}"
+          case "$outcome" in
+            unpublished)
+              npm publish --access public
+              ;;
+            published-here)
+              echo "This workflow already published $package from $RELEASE_COMMIT; skipping."
+              ;;
+            "published-elsewhere "*)
+              echo "::error::$package is already on npm, ${outcome#published-elsewhere }; npm never replaces a version"
+              exit 1
+              ;;
+            *)
+              echo "::error::could not read $package from the registry: ${outcome:-no answer}"
+              exit 1
+              ;;
+          esac
 
   github-release:
     # Re-run the failed job without attempting to publish the npm version again.
@@ -253,7 +325,32 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The action would append a second copy of the generated notes to a
+      # published release, so a re-run leaves one as it is. This endpoint, the
+      # one the action looks releases up with, answers 404 for a draft: a draft
+      # left by an interrupted attempt still goes to the action, which
+      # publishes it. Any other lookup failure fails the job, logging only its
+      # HTTP status.
+      - name: Check for a published GitHub release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          errors="$RUNNER_TEMP/release-lookup.err"
+          if url="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .html_url 2>"$errors")"; then
+            echo "GitHub release $TAG is already published at $url; leaving it unchanged."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            http_status="$(grep -m1 -oE 'HTTP [0-9]{3}' "$errors" || true)"
+            if [ "$http_status" != "HTTP 404" ]; then
+              echo "::error::could not look up GitHub release $TAG: ${http_status:-no HTTP status}"
+              exit 1
+            fi
+          fi
       - name: Create GitHub release
+        if: steps.existing.outputs.published != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve.outputs.tag }}

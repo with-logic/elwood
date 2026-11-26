@@ -21,6 +21,19 @@ import {
 // Re-exported for existing importers; the implementation lives in core/versions.ts.
 
 export const minimumClaudeVersion = "2.1.144";
+/** The first Claude whose workspace prompt discloses the folder's hooks (§5.3, §5.4). */
+export const claudeHooksDisclosureVersion = "2.1.329";
+
+/**
+ * Whether the installed Claude can disclose hooks on its workspace prompt, from the same cached
+ * `--version` read the preflight made. This is the version's capability, not whether a given
+ * prompt disclosed hooks. An unparseable version cannot vouch for it.
+ */
+export async function claudeCanDiscloseHooks(directory: ProbeDirectory): Promise<boolean> {
+  const version = parseVersion((await readClaudeVersion(directory)).stdout);
+  return version !== null && compareVersions(version, claudeHooksDisclosureVersion) >= 0;
+}
+
 export type ClaudePreflightWarning = DistributiveOmit<
   Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" | "agent_update_failed" }>,
   "elwoodSessionId"
