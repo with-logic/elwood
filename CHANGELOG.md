@@ -24,6 +24,11 @@ back each entry are listed in `prd/14-conformance.md`.
   offer has been on screen for 500 ms, never types it again onto the screen Codex
   draws next, and holds input through that screen without reporting it as
   `codex-unidentified-dialog`.
+- Answer Claude questions in a narrow pane. At 60 columns Claude wraps the
+  questionnaire footer over two rows once the cursor reaches the Other row,
+  `Next` or `Submit`. A checkbox, alternative-text or grouped answer then
+  stalled until it failed with `question_answer_failed` and closed the request
+  as `unavailable`.
 
 ## [0.8.0] - 2026-11-25
 
