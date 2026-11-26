@@ -37,11 +37,12 @@ export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: stri
   return { questionId: question.id, text };
 }
 
-/** A session on the pinned Codex and model inside `sandbox`, sized like the captures. */
-export function publicCodexQuestionSession(sandbox: {
-  readonly cwd: string;
-  readonly stateDir: string;
-}): CodexSession {
+/** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default;
+ * the narrow-pane proof passes its own pane size. */
+export function publicCodexQuestionSession(
+  sandbox: { readonly cwd: string; readonly stateDir: string },
+  initialSize: { readonly cols: number; readonly rows: number } = nativeQuestionSize,
+): CodexSession {
   return new CodexSession({
     cwd: sandbox.cwd,
     stateDir: sandbox.stateDir,
@@ -51,7 +52,7 @@ export function publicCodexQuestionSession(sandbox: {
     autoupdate: false,
     sandbox: "read-only",
     approvalPolicy: "never",
-    initialSize: nativeQuestionSize,
+    initialSize,
   });
 }
 

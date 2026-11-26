@@ -9,7 +9,7 @@ import {
   publicCodexQuestionSession,
   publicCodexTextAnswer,
   waitForPublicCodexQuestion,
-  waitForPublicCodexQuestionBefore,
+  waitForPublicCodexQuestionsBeforeReply,
 } from "./questions/codex-public-sandbox.ts";
 import { codexQuestionProofSkip } from "./questions/codex-sandbox.ts";
 import { runPublicProof } from "./questions/proof-run.ts";
@@ -40,7 +40,7 @@ test("C-QUESTION-04 queued Codex questions are answered in a 50-column pane", {
     // the runner reports the failed step.
     reply.catch(() => undefined);
     const raised = () => events.filter((event) => event.phase === "raised").length === 3;
-    await waitForPublicCodexQuestionBefore(raised, reply);
+    await waitForPublicCodexQuestionsBeforeReply(raised, reply);
     const [color, note, literal] = await session.listQuestions();
     assert.ok(color && note && literal);
     await session.answerQuestions(color.id, [publicCodexOptionAnswer(color, "Blue")], {
@@ -84,7 +84,7 @@ test("C-QUESTION-04 a modal Codex question is answered in an 80-column pane", {
     await waitForPublicCodexQuestion(() => live.terminal.snapshot().text.includes("Plan mode ("));
     const reply = session.send(modalPrompt, { timeoutMs: 90_000 });
     reply.catch(() => undefined);
-    await waitForPublicCodexQuestionBefore(() => events.length === 1, reply);
+    await waitForPublicCodexQuestionsBeforeReply(() => events.length === 1, reply);
     // At 80 columns 0.172 moves the modal footer's last hint to a row of its own.
     const wrapped = [
       "tab to add notes | enter to submit answer | ←/→ to navigate questions",
