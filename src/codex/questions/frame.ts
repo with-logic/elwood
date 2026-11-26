@@ -7,7 +7,7 @@ import {
   composerInputPrefix,
   type ModalQuestionFooter,
   modalQuestionFooter,
-  queuedFooter,
+  queuedFooterStart,
   queuedPanelHeader,
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
@@ -65,6 +65,8 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   const lines = frame.lines.map((line) => line.trimEnd());
   const end = lines.findLastIndex((line) => line.trim().length > 0);
   const footer = lines[end]?.trim() ?? "";
+  // The panel's body ends above its footer, which a narrow pane wraps onto more rows.
+  let bodyEnd = queuedFooterStart(lines, end);
   if (frame.cursorRow < 0 || frame.cursorRow > end + footerCursorAllowanceRows) return undefined;
   let start: number;
   let count: number;
@@ -74,20 +76,22 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   if (modal) {
     ({ start, count, index } = modal);
     kind = "blocking";
-  } else if (queuedFooter.test(footer)) {
+    bodyEnd = end;
+  } else if (bodyEnd === undefined) return undefined;
+  else {
     start = lines.lastIndexOf(queuedPanelHeader);
     if (start < 0) return undefined;
     const position = lines
-      .slice(start + 1, end)
+      .slice(start + 1, bodyEnd)
       .map((line) => line.trim())
       .find((line) => /^\d+ of \d+$/.test(line));
     const match = position?.match(/^(\d+) of (\d+)$/);
     index = match ? Number(match[1]) - 1 : 0;
     count = match ? Number(match[2]) : 1;
     kind = "queued";
-  } else return undefined;
+  }
   if (!questionCursor(frame, lines, start, kind) || index < 0 || index >= count) return undefined;
-  const rawBody = frame.lines.slice(start + 1, end);
+  const rawBody = frame.lines.slice(start + 1, bodyEnd);
   const body = rawBody.map((line) => line.trim());
   return {
     kind,
