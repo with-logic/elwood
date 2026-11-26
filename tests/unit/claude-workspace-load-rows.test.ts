@@ -114,7 +114,7 @@ test.each([
 test("C-CLAUDE-29 another warning before the load row fails closed", () => {
   const frame = mcpOnly.replace(
     mcpRow,
-    `⚠ This folder pre-approves 3 tool permissions\n\n ${mcpRow}`,
+    `⚠ This folder adds 1 directory to the workspace in .claude/settings.json\n\n ${mcpRow}`,
   );
   expect(autotrustView(frame)).toEqual(failedClosed);
 });

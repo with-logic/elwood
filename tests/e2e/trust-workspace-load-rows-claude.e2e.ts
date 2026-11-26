@@ -1,14 +1,15 @@
 /**
  * Claude's workspace load rows and MCP server prompt on the REAL Claude CLI (PRD §5.3, §5.4,
- * C-E2E-29, C-CLAUDE-28, C-CLAUDE-29), each in a fresh, untrusted project on Claude 2.1.329 or
- * later. For a folder whose `.mcp.json` declares a server that writes a marker as it starts,
- * `autotrust: true` answers the workspace prompt and then the MCP server prompt, reaches `ready`,
- * and the server starts, while `listClaudeModels` refuses the folder and the server never starts.
- * For a folder whose `.claude/settings.json` only enables a plugin, from a marketplace in the
- * project, whose `SessionStart` hook writes a marker, the probe refuses the plain settings row
- * and the hook never runs, while `autotrust: true` reaches `ready` and the hook runs with no
- * further prompt. For settings that set an environment variable Claude does not consider safe,
- * the probe rejects the prompt it cannot verify.
+ * C-E2E-29, C-CLAUDE-28, C-CLAUDE-29, C-CLAUDE-30), each in a fresh, untrusted project on Claude
+ * 2.1.329 or later. For a folder whose `.mcp.json` declares a server that writes a marker as it
+ * starts, `autotrust: true` answers the workspace prompt and then the MCP server prompt, reaches
+ * `ready`, and the server starts, while `listClaudeModels` refuses the folder and the server
+ * never starts. For a folder whose `.claude/settings.json` only enables a plugin, from a
+ * marketplace in the project, whose `SessionStart` hook writes a marker, the probe refuses the
+ * plain settings row and the hook never runs, while `autotrust: true` reaches `ready` and the
+ * hook runs with no further prompt. For settings that pre-approve a tool permission, the probe
+ * refuses the folder and autotrust reaches `ready`. For settings that set an environment
+ * variable Claude does not consider safe, the probe rejects the prompt it cannot verify.
  */
 
 import assert from "node:assert/strict";
@@ -152,6 +153,41 @@ test("C-E2E-29 trusting a folder whose settings only enable a plugin runs the pl
     await readyWithMarker(session, marker);
     assert.deepEqual(started.answers, ["workspace_trust"], "no prompt beyond the workspace's");
     await session.stop();
+  } finally {
+    await cleanup(session);
+  }
+});
+
+/** A project whose settings pre-approve a tool permission, and a marker nothing writes. */
+function permissionsProject(): MarkedProject {
+  const project = makeProject("claude");
+  const permissions = { allow: ["Bash(ls:*)"] };
+  writeJson(join(project.cwd, ".claude", "settings.json"), { permissions });
+  return { project, marker: join(project.cwd, "never-written") };
+}
+
+test("C-E2E-29 listClaudeModels refuses a folder whose settings pre-approve a tool permission", {
+  skip,
+  timeout: refusalTestTimeoutMs,
+}, async () => {
+  const { project, marker } = permissionsProject();
+  await assertProbeRefuses(project, "workspace_settings");
+  await assertStillUntrusted(project, marker, false);
+});
+
+test("C-E2E-29 autotrust trusts a folder whose settings pre-approve a tool permission", {
+  skip,
+  timeout: testTimeoutMs,
+}, async () => {
+  const { project } = permissionsProject();
+  let session: ClaudeSessionApi | undefined;
+  try {
+    const started = await autotrusted(project);
+    const live = started.session;
+    session = live;
+    await waitFor(() => (live.status === "ready" ? true : undefined), "ready", readyTimeoutMs);
+    assert.deepEqual(started.answers, ["workspace_trust"]);
+    await live.stop();
   } finally {
     await cleanup(session);
   }

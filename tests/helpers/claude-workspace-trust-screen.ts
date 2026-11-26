@@ -62,6 +62,12 @@ export const claudeLoadRowCaptures = (
     ["claude-2.1.332/trust/workspace-hooks-mcp-120", "hooks"],
     ["claude-2.1.332/trust/workspace-hooks-plus-local-settings-120", "hooks"],
     ["claude-2.1.332/trust/workspace-hooks-both-mcp-100", "hooks"],
+    ["claude-2.1.332/trust/workspace-permissions-one-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-three-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-both-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-many-100", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-long-100", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-hooks-120", "hooks"],
     ["claude-2.1.329/trust/workspace-mcp-120", "mcp_servers"],
     ["claude-2.1.329/trust/workspace-settings-120", "settings"],
   ] as const

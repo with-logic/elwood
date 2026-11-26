@@ -921,8 +921,22 @@ with no warning row. Captures for each kind are in
 `tests/fixtures/claude-2.1.332/trust/` and `tests/fixtures/claude-2.1.329/trust/`.
 Elwood verifies every combination of the three items with ` (runs commands)` only
 on files the hooks warning names. The environment annotation, and the binary's other
-warnings (pre-approved tool permissions, added directories, a headers helper), are
-not verified, so those prompts fail closed. C-CLAUDE-29.
+warnings (added directories, a headers helper), are not verified, so those prompts
+fail closed. C-CLAUDE-29.
+
+**Pre-approved tool permissions add a warning that quotes the folder's rules.** A
+settings file whose `permissions.allow` lists rules draws, before the hooks warning
+or the load row, `⚠ This folder pre-approves <N> tool permission[s] in <files>:`
+(singular for one; `<files>` joined like the load row), then the rules, then `These
+will apply without asking. Only proceed if you trust this configuration.`, with no
+blank row before a hooks warning (2.1.332, 2026-11-26). The rules are joined like a
+list, at most eight then `, and <k> more`; one longer than about 60 characters is cut
+with `…`; the list wraps onto rows indented one column; a zero-width character in a
+rule does not reach the screen. `deny` and `ask` rules draw no warning. Because the
+rules are the folder's own text, Elwood checks only the rows around them, and reads
+what the prompt discloses from the hooks warning and load row with the rules
+removed. Captures: `tests/fixtures/claude-2.1.332/trust/workspace-permissions-*.txt`.
+C-CLAUDE-30, C-E2E-29.
 
 **A settings row with no annotation can still run code.** A project
 `.claude/settings.json` that only adds a directory marketplace inside the project
