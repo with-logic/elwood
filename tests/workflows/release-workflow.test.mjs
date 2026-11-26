@@ -27,19 +27,30 @@ test("GitHub release creation retries independently of npm publication", () => {
 test("the GitHub release leaves Latest to GitHub's commit-date order", () => {
   assert.match(
     job("github-release"),
-    /uses: softprops\/action-gh-release@v2\n[\s\S]*?\n {10}make_latest: legacy\n/u,
+    /uses: softprops\/action-gh-release@v2\n {8}with:\n(?: {10}\S.*\n)*? {10}make_latest: legacy\n/u,
   );
 });
 
+const workflow = readFileSync(
+  new URL("../../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
+
 // The re-run notes sit directly above `on:`; an edit to them must keep every release path.
 test("the release workflow keeps its push, tag and manual triggers", () => {
-  const workflow = readFileSync(
-    new URL("../../.github/workflows/release.yml", import.meta.url),
-    "utf8",
-  );
   assert.match(
     workflow,
     /^on:\n {2}push:\n {4}branches: \[main\]\n {4}tags: \["v\*\.\*\.\*"\]\n {2}workflow_dispatch:\n/mu,
+  );
+});
+
+// npm moves `latest` to whatever version an upload names, after checks that
+// read the registry first, so overlapping runs could leave it on the older
+// version; GitHub's default queue would cancel a waiting release.
+test("release runs take turns, keeping every waiting run", () => {
+  assert.match(
+    workflow,
+    /^concurrency:\n {2}group: release-\$\{\{ github\.repository \}\}\n {2}cancel-in-progress: false\n {2}queue: max\n\njobs:\n/mu,
   );
 });
 

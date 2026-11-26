@@ -12,12 +12,17 @@
  * configuration ID for 0.7.0, and neither in its expected shape for 0.6.1.
  * Above 0.6.1, @with-logic/elwood-deprecated has only versions npm would not
  * keep `latest` on: deprecated ones and a prerelease.
+ * @with-logic/elwood-major adds 0.10.0 and 1.0.0.
  * @with-logic/elwood-flaky fails each path's first requests in the ways
  * `interruptions` lists, then answers as recorded.
  * @with-logic/registry-down answers 500, @with-logic/packument-down answers
  * 500 for its packument and 404 for its versions, @with-logic/registry-garbled
  * answers 200 with a body that is not JSON, @with-logic/registry-oversized
- * answers 200 with 17 MiB, and anything else 404.
+ * answers 200 with 17 MiB, and anything else 404. Each of
+ * `malformedPackuments` answers 200 for its packument with a document that has
+ * no versions object, and 404 for its versions.
+ * A packument is served only to a request that accepts the abbreviated
+ * packument, which the full one outgrows; any other gets HTTP 406.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -42,6 +47,15 @@ unrecorded.versions["0.6.1"]._npmUser.trustedPublisher.oidcConfigId = "x".repeat
 const deprecated = copy("@with-logic/elwood-deprecated");
 deprecated.versions["0.9.0-rc.1"] = { ...deprecated.versions["0.8.0"], version: "0.9.0-rc.1" };
 for (const version of ["0.7.0", "0.8.0"]) deprecated.versions[version].deprecated = "fixture";
+const major = copy("@with-logic/elwood-major");
+for (const version of ["0.10.0", "1.0.0"]) {
+  major.versions[version] = { ...major.versions["0.8.0"], version };
+}
+const malformedPackuments = new Map([
+  ["@with-logic/packument-null", "null"],
+  ["@with-logic/packument-unversioned", "{}"],
+  ["@with-logic/packument-listed", '{"versions":[]}'],
+]);
 
 const packuments = new Map(
   [
@@ -49,6 +63,7 @@ const packuments = new Map(
     reconfigured,
     unrecorded,
     deprecated,
+    major,
     copy("@with-logic/elwood-flaky"),
   ].map((packument) => [packument.name, packument]),
 );
@@ -85,6 +100,11 @@ const server = createServer((request, response) => {
   const reply = (status, body) =>
     response.writeHead(status, { "content-type": "application/json" }).end(body);
   const packageName = path.split("/", 2).join("/");
+  const abbreviated = request.headers.accept?.includes("application/vnd.npm.install-v1+json");
+  if ((packuments.has(path) || malformedPackuments.has(path)) && !abbreviated) {
+    return reply(406, '{"error":"fixture serves only the abbreviated packument"}');
+  }
+  if (malformedPackuments.has(path)) return reply(200, malformedPackuments.get(path));
   if (packageName === "@with-logic/registry-down") return reply(500, '{"error":"fixture"}');
   if (path === "@with-logic/packument-down") return reply(500, '{"error":"fixture"}');
   if (packageName === "@with-logic/registry-garbled") return reply(200, "<!doctype html>");

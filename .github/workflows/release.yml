@@ -13,9 +13,9 @@ name: Release
 # published GitHub release are left as they are. Any other tag of that name
 # fails the run. A version that a newer stable, undeprecated one on npm has
 # overtaken when the publish step looks is not published, because it cannot
-# take `latest`: the step fails, naming the newer version. npm's own check at
-# upload covers a newer release that lands meanwhile. The newest GitHub
-# release stays Latest.
+# take `latest`: the step fails, naming the newer version. Release runs take
+# turns, so only a version published by hand can land between that look and
+# the upload. The newest GitHub release stays Latest.
 on:
   push:
     branches: [main]
@@ -30,6 +30,17 @@ on:
 permissions:
   contents: write # Create releases and push tags.
   id-token: write # npm trusted publishing (OIDC); no long-lived token.
+
+# One run at a time, in the order they queued. npm moves `latest` to whatever
+# version an upload names, and both the publish step's overtaken check and
+# npm's own read the registry before the upload, so two overlapping runs
+# could leave `latest` on the older version. `queue: max` keeps every waiting
+# run, up to 100; by default a newly queued run cancels the one waiting, which
+# would drop that release.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   resolve:
@@ -316,8 +327,9 @@ jobs:
           outcome="$(node --input-type=module -e '
             import { setTimeout as sleep } from "node:timers/promises";
             const [registry, name, version, commit, expectedConfigId, retries, retryDelayMs] = process.argv.slice(1);
-            const packumentUrl = new URL(name.replace("/", "%2f"), registry);
-            const versionUrl = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
+            const encodedName = name.replace("/", "%2f");
+            const packumentUrl = new URL(encodedName, registry);
+            const versionUrl = new URL(`${encodedName}/${version}`, registry);
             const attemptTimeoutMs = 30_000;
             const maxDocumentBytes = 16 * 1024 * 1024;
             const semverPattern = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
@@ -357,8 +369,8 @@ jobs:
               if (user instanceof Object) return "another account";
               return "an unrecorded publisher";
             }
-            /** Reads a registry document: `missing` for a 404, else the parsed JSON or why the read failed. */
-            async function read(url, headers) {
+            /** Fetches a registry document, with retries: `missing` for a 404, else the parsed JSON or why the fetch failed. */
+            async function fetchRegistryDocument(url, headers) {
               try {
                 const answer = await lookup(url, headers);
                 if (answer.status === 404) return { missing: true };
@@ -395,13 +407,16 @@ jobs:
               return newest?.[0];
             }
             async function classifyUnpublished() {
-              const found = await read(packumentUrl, { accept: "application/vnd.npm.install-v1+json" });
+              const found = await fetchRegistryDocument(packumentUrl, { accept: "application/vnd.npm.install-v1+json" });
               if (found.failure) return `lookup-failed ${found.failure} reading the packument`;
-              const newer = found.missing ? undefined : newestOvertakingVersion(Object(found.document.versions));
+              if (found.missing) return "unpublished";
+              const { versions } = found.document;
+              if (!(versions instanceof Object) || Array.isArray(versions)) return "lookup-failed a packument without a versions object";
+              const newer = newestOvertakingVersion(versions);
               return newer ? `overtaken-by ${newer}` : "unpublished";
             }
             async function classify() {
-              const found = await read(versionUrl);
+              const found = await fetchRegistryDocument(versionUrl);
               if (found.failure) return `lookup-failed ${found.failure}`;
               if (found.missing) return classifyUnpublished();
               const manifest = found.document;
