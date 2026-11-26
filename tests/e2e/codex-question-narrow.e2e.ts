@@ -1,21 +1,16 @@
 /** Real Codex queued questions answered in a narrow pane (PRD §5.10, C-QUESTION-04). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ElwoodQuestionEvent, ElwoodQuestionRequest } from "../../src/index.ts";
+import type { ElwoodQuestionEvent } from "../../src/index.ts";
 import { asyncPrompt } from "./questions/codex-prompts.ts";
 import {
   publicCodexOptionAnswer,
   publicCodexQuestionSandbox,
   publicCodexQuestionSession,
+  publicCodexTextAnswer,
   waitForPublicCodexQuestionBefore,
 } from "./questions/codex-public-sandbox.ts";
 import { codexQuestionProofSkip } from "./questions/codex-sandbox.ts";
-
-const textAnswer = (request: ElwoodQuestionRequest, text: string) => {
-  const [question] = request.questions;
-  assert.ok(question, "Native question request contains no questions");
-  return [{ questionId: question.id, text }];
-};
 
 test("C-QUESTION-04 queued Codex questions are answered in a 50-column pane", {
   skip: codexQuestionProofSkip("one valid-model turn"),
@@ -40,11 +35,13 @@ test("C-QUESTION-04 queued Codex questions are answered in a 50-column pane", {
     const [color, note, literal] = await session.listQuestions();
     assert.ok(color && note && literal);
     // The note is question 2 of 3 and the color then 1 of 2: both footers wrap.
-    await session.answerQuestions(note.id, textAnswer(note, "narrow note"), { timeoutMs: 30_000 });
+    await session.answerQuestions(note.id, [publicCodexTextAnswer(note, "narrow note")], {
+      timeoutMs: 30_000,
+    });
     await session.answerQuestions(color.id, [publicCodexOptionAnswer(color, "Blue")], {
       timeoutMs: 30_000,
     });
-    await session.answerQuestions(literal.id, textAnswer(literal, "narrow literal"), {
+    await session.answerQuestions(literal.id, [publicCodexTextAnswer(literal, "narrow literal")], {
       timeoutMs: 30_000,
     });
     assert.equal((await queued).trim(), "ELWOOD_ASYNC_DONE");

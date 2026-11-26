@@ -30,6 +30,13 @@ export function publicCodexOptionAnswer(request: ElwoodQuestionRequest, label: s
   return { questionId: question.id, optionIds: [option.id] };
 }
 
+/** An answer with `text` for the request's first question only; later questions are ignored. */
+export function publicCodexTextAnswer(request: ElwoodQuestionRequest, text: string) {
+  const question = request.questions[0];
+  if (!question) throw new Error("Native question request contains no questions");
+  return { questionId: question.id, text };
+}
+
 /** A session on the pinned Codex and model inside `sandbox`, sized like the captures. */
 export function publicCodexQuestionSession(sandbox: {
   readonly cwd: string;
