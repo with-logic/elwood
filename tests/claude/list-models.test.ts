@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { listClaudeModels } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
+import { claudeWorkspaceTrustScreen } from "../helpers/claude-workspace-trust-screen.ts";
 import { asScreen, claudePicker, until } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
@@ -124,5 +125,23 @@ describe("listClaudeModels", () => {
     // The probe removed its OWNED temp dir even though startup failed mid-way, so
     // nothing it allocated is left under the caller's stateDir (no leak).
     expect(existsSync(parent) ? readdirSync(parent) : []).toHaveLength(0);
+  });
+
+  test("C-CLAUDE-26 the probe refuses a workspace prompt that declares hooks", async () => {
+    const cwd = tempDir();
+    const stateDir = join(cwd, "state");
+    installFakes();
+    const listing = listClaudeModels({ cwd, stateDir });
+    await until(() => ptys.length === 1);
+    const pty = ptys[0]!;
+    pty.emitData(asScreen(claudeWorkspaceTrustScreen(cwd, "no", "hooks")));
+    await expect(listing).rejects.toMatchObject({
+      code: "claude_start_failed",
+      details: { category: "workspace_hooks" },
+    });
+    // Nothing answered the prompt, so the folder stays untrusted, and the probe is gone.
+    expect(pty.writes).toEqual([]);
+    expect(reapedGroups).toContain(pty.pid);
+    expect(readdirSync(stateDir)).toEqual([]);
   });
 });

@@ -808,6 +808,25 @@ across physical rows** on a narrow terminal. Its option format is version-couple
   dialog waiting. From 2.1.310 evidence, never do that with a relative arrow and a
   separate Enter (see "Claude trust selection reset" below).
 
+**Claude 2.1.332 adds two rows for a folder whose settings declare hooks.** When the
+project's `.claude/settings.json` declares hooks, the prompt shows
+`⚠ This folder configures hooks that can run commands without asking, declared in
+.claude/settings.json` and `Trusting this folder loads .claude/settings.json (runs
+commands).` between `Claude Code'll be able to read, edit, and execute files here.` and
+`Security guide`, with the cursor on `No, exit`. At Elwood's 100-column startup minimum
+the first row wraps before `.claude/settings.json`; at 120 columns it fits on one row
+(`tests/fixtures/claude-2.1.332/trust/workspace-hooks-*.txt`). Accepting runs the
+project's hooks: a `SessionStart` hook ran as the trusted session started. Before
+C-CLAUDE-26 made the exact pair native copy, Elwood failed closed on it, so
+`autotrust: true` left such a session `blocked`. C-E2E-23's isolation test timed out
+that way, because its scratch project declares a `SessionStart` hook. C-E2E-28 runs the
+real prompt under `autotrust` and through `answerDialog()`, and checks that
+`listClaudeModels` refuses it (§5.3). Claude does not wait for a project `SessionStart`
+hook before it shows the composer: with a hook that slept 20 s, `answerDialog()`
+resolved and the session reached `ready` about 2.3 s after the answer, and the hook
+finished at about 22 s. A slow hook therefore cannot push an answer that trusted the
+folder past `answerDialog()`'s 12 s default.
+
 **Claude 2.1.331 displayed a launch subdirectory but persisted trust at the
 repository root.** The discovery matcher verifies the full path in the native
 `Accessing workspace:` prelude and derives the scope from local Git metadata.

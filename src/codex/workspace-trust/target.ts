@@ -64,6 +64,8 @@ export function createCodexWorkspaceTrustMatcher({
       result &&
       ({
         target: result,
+        // Codex's prompt states no per-folder facts beyond its target (§5.13).
+        facts: {},
         dialog: menu.dialog,
         declineOutcome: layout.declineOutcome,
       } as const)

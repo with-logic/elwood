@@ -62,6 +62,8 @@ function claudeLaunch(
   const common = {
     cwd: request.cwd,
     stateDir: request.stateDir,
+    // `--trust` is the caller's choice, so it also approves a folder whose settings declare
+    // hooks (§12A.2). Passing `startClaudeWithId`'s refusal instead would leave it unanswered.
     autotrust: request.trust,
     permissionMode: request.permissionMode ?? "dontAsk",
     ...optional(request.initialSize, "initialSize"),

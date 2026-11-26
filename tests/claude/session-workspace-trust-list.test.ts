@@ -38,6 +38,7 @@ test("C-ATTN-07 Claude lists exact text and ordered choices across a cursor redr
       label: "workspace_trust",
       targetPath: cwd,
       targetScope: "folder",
+      targetDeclaresHooks: false,
       text: expectedText,
       choices: [
         { id: expect.any(String), label: "No, exit" },

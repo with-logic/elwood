@@ -52,11 +52,15 @@ export function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessi
   return startClaudeWithId(rawOptions, randomUUID());
 }
 
-/** Internal deterministic-identity start used by owners that must clean failed launch state. */
+/**
+ * Internal deterministic-identity start used by owners that must clean failed launch state.
+ * `onDeclaredHooksRefused` is the model probe's hooks policy (§5.3, `ClaudeLaunchOptions`).
+ */
 export async function startClaudeWithId(
   rawOptions: StartClaudeOptions,
   elwoodSessionId: string,
   checkedDirectory?: CheckedLaunchDirectory,
+  onDeclaredHooksRefused?: () => void,
 ): Promise<ClaudeSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
@@ -102,7 +106,8 @@ export async function startClaudeWithId(
     return startClaudeFromRecord(
       record,
       stateDir,
-      { ...options, launchDirectory: directory },
+      // Set explicitly: an untyped caller's extra option key never reaches this policy.
+      { ...options, launchDirectory: directory, onDeclaredHooksRefused },
       false,
       { preflightWarning: warning, workspaceTrustEvidence },
     );

@@ -1,8 +1,8 @@
 /**
  * Answers Claude first-party startup prompts that block embedded readiness:
  * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder)
- * and the browser-tools prompt. Implements PRD §5.1, C-CLAUDE-10, C-CLAUDE-11,
- * C-CLAUDE-14, and C-CLAUDE-16.
+ * and the browser-tools prompt. Implements PRD §5.1, §5.3, C-CLAUDE-10, C-CLAUDE-11,
+ * C-CLAUDE-14, C-CLAUDE-16, and C-CLAUDE-26.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";
@@ -14,7 +14,9 @@ import {
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
+import { claudeWorkspaceDeclaresHooks } from "../core/trust/copy.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
+import type { TrustView } from "../core/trust/view.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -31,9 +33,13 @@ export class ClaudeStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
     onWorkspaceTrustTakeover?: () => void,
+    onDeclaredHooksRefused?: () => void,
   ) {
     this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
-    this.trust = new TrustPromptResponder("claude", clearance, autotrust, { onStateChange });
+    this.trust = new TrustPromptResponder("claude", clearance, autotrust, {
+      onStateChange,
+      claimCallerOwnership: onDeclaredHooksRefused && refuseDeclaredHooks(onDeclaredHooksRefused),
+    });
   }
 
   get blockedPrompt() {
@@ -158,6 +164,22 @@ export function guardedClaudeAutomationWrite(
     cancelled,
     signal,
   );
+}
+
+/**
+ * Leaves a verified workspace prompt that says the folder declares hooks to a human, so
+ * automatic trust never runs those hooks, and reports each frame that shows it (§5.3).
+ */
+function refuseDeclaredHooks(onRefused: () => void): (view: TrustView) => boolean {
+  return (view) => {
+    const refused =
+      view.kind === "candidate" &&
+      view.valid &&
+      view.spec.id === "workspace_trust" &&
+      claudeWorkspaceDeclaresHooks(view.dialog.header);
+    if (refused) onRefused();
+    return refused;
+  };
 }
 
 export function browserToolsPromptVisible(text: string): boolean {

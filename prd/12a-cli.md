@@ -60,7 +60,8 @@ flag order, to the same user turn; paths resolve from the effective workspace.
 CLI turns use the public normalized turn boundary and preserve normal login
 shell, workspace, instruction, settings, skill, MCP, and hook behavior. By
 default Elwood answers only the folder/directory and extension trust classes
-documented in §5.1. `--no-trust` disables that authorization but does not
+documented in §5.1, including Claude's workspace prompt for a folder whose
+settings declare hooks (§5.4), after which Claude runs those hooks. `--no-trust` disables that authorization but does not
 disable Codex's session-wide hook-trust bypass, which also covers non-Elwood hooks. Any other recognized blocking
 prompt fails as `blocked_prompt` and reports only its stable rule label.
 

@@ -176,7 +176,11 @@ the event, capability, validation and input-ownership contract.
 Claude and Codex sessions expose workspace trust prompts through `listDialogs()`
 and emit typed `dialog` events when verified requests appear or close. Each
 request names the exact folder or repository root and lists the native choices
-in display order. Both adapters accept verified choice IDs through
+in display order. A Claude request also has `targetDeclaresHooks`. It is `true` when
+Claude's prompt says the folder's `.claude/settings.json` declares hooks: trusting the
+folder runs them, and `autotrust: true` approves that prompt too. `false` only means the
+prompt showed no hooks rows, not that no hooks run: Claude before 2.1.332 never shows
+them. Codex requests have no such field. Both adapters accept verified choice IDs through
 `answerDialog()`. The `ElwoodDialogEvent` type defaults to Codex. Pass
 `ElwoodDialogEvent<"claude">` for Claude events. See [native dialog discovery](../prd/05-api/5.13-dialogs.md).
 With `autotrust: false`, Claude callers can use `answerDialog(requestId, choiceId, options?)`.
@@ -263,7 +267,11 @@ failure surfaces the adapter's normal typed error; a picker failure rejects
 with `model_automation_failed` (a secondary teardown failure is attached as
 `cause`). Trust note: the probe starts with `autotrust: true` for the given
 `cwd`, so it answers that directory's workspace, skill, plugin, and MCP trust
-prompts automatically. Point these functions at a directory you already trust.
+prompts automatically. The exception is Claude's workspace prompt for a folder
+whose settings declare hooks, since trusting it would run them: `listClaudeModels`
+leaves it unanswered and rejects with `claude_start_failed` and
+`details.category: "workspace_hooks"`. Point these functions at a directory you
+already trust.
 
 Both adapters accept a `persona` start option: an instruction delivered as the
 session's guaranteed first user message once the agent is ready, ahead of

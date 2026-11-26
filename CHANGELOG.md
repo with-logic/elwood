@@ -12,6 +12,21 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- `autotrust: true` now approves Claude's workspace trust prompt for a folder whose
+  `.claude/settings.json` declares hooks, and Claude then runs those hooks. On Claude
+  Code 2.1.332 that prompt adds two hooks rows, which Elwood treated as unknown prose,
+  so the session stayed `blocked`. The `elwood` CLI's `--trust`, on by default,
+  approves it too.
+
+- `listClaudeModels` does not approve that prompt, because its autotrust is implied
+  rather than chosen. It rejects with `claude_start_failed` and
+  `details.category: "workspace_hooks"`, and the folder stays untrusted.
+
+- Claude workspace trust requests have `targetDeclaresHooks`. It is `true` when Claude's
+  prompt says the folder declares hooks that run once it is trusted. `false` only means
+  the prompt showed no hooks rows: Claude before 2.1.332 never shows them. With
+  automatic trust off, `listDialogs()` now lists that prompt and `answerDialog()`
+  answers it.
 - Skip the update offer that Codex 0.171 and later show at start and on resume,
   for npm and standalone installs and at narrow widths. Elwood picks `Skip`,
   which records no dismissal in Codex's update state. It writes the key once the

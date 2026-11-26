@@ -18,10 +18,10 @@ type NativeTrustView = {
   readonly humanOwnedPrompt: () => TrustPromptId | undefined;
 };
 
-type TrustFrame = {
+type TrustFrame<Agent extends ElwoodAgentKind> = {
   readonly frame: TerminalSnapshot;
   readonly identity: string;
-  readonly menu: WorkspaceTrustMenu;
+  readonly menu: WorkspaceTrustMenu<Agent>;
 };
 
 // One already-issued filesystem operation may outlive its deadline. Allow a newer
@@ -30,7 +30,7 @@ const maxUnfinishedLookups = 2;
 
 export class WorkspaceTrustPolling<
   Agent extends ElwoodAgentKind,
-  Candidate extends TrustFrame = TrustFrame,
+  Candidate extends TrustFrame<Agent> = TrustFrame<Agent>,
 > {
   private sampled:
     | { readonly frame: TerminalSnapshot; readonly candidate: Candidate | undefined }

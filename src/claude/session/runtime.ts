@@ -35,6 +35,11 @@ import type { ClaudeLaunchTrustEvidence } from "../workspace-trust/target.ts";
 export type ClaudeLaunchOptions = StartClaudeOptions & {
   readonly env: ChildEnvironment;
   readonly launchDirectory: CheckedLaunchDirectory;
+  /**
+   * Internal, set only by `listClaudeModels`: when present, automatic trust refuses a
+   * workspace prompt that says the folder declares hooks, and this is called (§5.3).
+   */
+  readonly onDeclaredHooksRefused?: (() => void) | undefined;
 };
 
 export type BuildClaudeSessionInput = {
