@@ -1,15 +1,20 @@
-/** Bound the live-only startup screen activity (PRD §5.4, C-ATTN-06). */
+/** Bound the live-only startup screen activity (PRD §5.4, C-ATTN-06, C-ATTN-09). */
 import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 import type { ElwoodAgentKind } from "./index.ts";
 
 const maxStartupScreenCodeUnits = 8_192;
+
+/** Reported from the readiness deadline (C-ATTN-09) or at the backstop (C-ATTN-06). */
+export type UnrecognizedStartupLabel =
+  | "initial_ready_deadline"
+  | InitialReadyBackstopWarning["code"];
 
 export type UnrecognizedStartupActivity = {
   readonly elwoodSessionId: string;
   readonly agent: ElwoodAgentKind;
   readonly source: "terminal";
   readonly kind: "unrecognized_startup";
-  readonly label: InitialReadyBackstopWarning["code"];
+  readonly label: UnrecognizedStartupLabel;
   readonly text: string;
 };
 
@@ -18,6 +23,7 @@ export function unrecognizedStartupActivity(
   agent: ElwoodAgentKind,
   elwoodSessionId: string,
   screen: string,
+  label: UnrecognizedStartupLabel = "initial_ready_backstop",
 ): UnrecognizedStartupActivity {
   const text = screen
     .trimEnd()
@@ -29,7 +35,7 @@ export function unrecognizedStartupActivity(
     agent,
     source: "terminal",
     kind: "unrecognized_startup",
-    label: "initial_ready_backstop",
+    label,
     text,
   };
 }

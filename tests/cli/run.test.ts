@@ -84,11 +84,14 @@ describe("executeRun", () => {
     });
   });
 
-  test("C-CLI-05 blocking attention stops before user submission", async () => {
+  test.each([
+    "claude-permission-dialog",
+    "claude-unrecognized-startup",
+  ])("C-CLI-05 C-ATTN-09 blocking %s attention stops before user submission", async (label) => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {
       await current.start();
-      current.emitActivity({ label: "claude-permission-dialog" });
+      current.emitActivity({ label });
     };
     const streams = io();
     expect(
@@ -98,7 +101,7 @@ describe("executeRun", () => {
     ).toBe(1);
     expect(JSON.parse(streams.stdout.value).error).toEqual({
       code: "blocked_prompt",
-      message: "Blocked prompt: claude-permission-dialog.",
+      message: `Blocked prompt: ${label}.`,
     });
     expect(session.turnOptions).toBeUndefined();
     expect(session.kills).toBe(1);

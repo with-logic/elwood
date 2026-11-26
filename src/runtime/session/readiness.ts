@@ -6,7 +6,8 @@
  * latched `blocked`) and is never starved BY it — it reconciles once the dialog
  * clears to a positive idle composer — and marks resume-composer readiness. Before the
  * first readiness it also holds physical writes until a configured composer is seen; the
- * first readiness, from a hook or otherwise, ends that hold too.
+ * first readiness, from a hook or otherwise, ends that hold too. From the deadline until that
+ * readiness it classifies unrecognized startup screens (§5.4, C-ATTN-09).
  * Implements PRD §5.3 (C-API-28).
  */
 
@@ -17,6 +18,11 @@ import {
   initialReady,
   markReadyOnResumeComposer,
 } from "../readiness/initial-ready.ts";
+import {
+  createUnrecognizedStartupWatch,
+  type UnrecognizedStartupEvidence,
+  type UnrecognizedStartupWatch,
+} from "../readiness/unrecognized-startup.ts";
 
 /** The holds a session applies before its first readiness (C-API-28). */
 export type InitialReadinessHold = {
@@ -51,6 +57,10 @@ export type ReadinessGate = InitialReadinessHold & {
     frame: string,
     cols?: number,
   ) => void;
+  /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-09). */
+  readonly unrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report">;
+  /** Re-read the current frame when the deadline passes: an idle CLI does not repaint. */
+  readonly onDeadline: (listener: () => void) => void;
 };
 
 /**
@@ -63,8 +73,7 @@ export type ReadinessGate = InitialReadinessHold & {
 export function createReadinessGate(
   onReady: () => void,
   resumed: boolean,
-  composer?: {
-    readonly configured: (frame: string, cols?: number) => boolean;
+  composer?: UnrecognizedStartupEvidence & {
     readonly onBackstop: (dialogHeld: boolean) => void;
   },
 ): ReadinessGate {
@@ -88,6 +97,8 @@ export function createReadinessGate(
   // Claude verifies an idle composer. Codex can verify its configured composer
   // during background work such as an MCP server retry.
   let evidence: ConfiguredComposerEvidence | undefined;
+  const watch = createUnrecognizedStartupWatch(composer ?? { configured: () => false });
+  let deadlineListener: (() => void) | undefined;
   if (composer) {
     const shown = () =>
       latest?.facts.composer_visible === true &&
@@ -97,7 +108,12 @@ export function createReadinessGate(
       shown,
       onBackstop: () => {
         backstopHold = () => !shown();
-        composer.onBackstop(readinessHeld);
+        // An unrecognized startup screen holds readiness, but it is no recognized dialog.
+        composer.onBackstop(readinessHeld && !watch.current());
+      },
+      onDeadline: () => {
+        watch.deadlinePassed();
+        deadlineListener?.();
       },
     };
   }
@@ -108,6 +124,7 @@ export function createReadinessGate(
   const ready = initialReady(
     () => {
       backstopHold = undefined;
+      watch.end();
       onReady();
       readyFired = true;
     },
@@ -129,6 +146,10 @@ export function createReadinessGate(
       observeFrameHold(facts, automationInputBlocking, frame, cols);
       if (!readyFired) markReadyOnResumeComposer(ready, resumed, facts, configured, readinessHeld);
       ready.retryWhenReleased(readinessHeld);
+    },
+    unrecognizedStartup: watch,
+    onDeadline: (listener) => {
+      deadlineListener = listener;
     },
   };
 }

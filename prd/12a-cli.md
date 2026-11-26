@@ -62,7 +62,9 @@ shell, workspace, instruction, settings, skill, MCP, and hook behavior. By
 default Elwood answers only the folder/directory and extension trust classes
 documented in §5.1. `--no-trust` disables that authorization but does not
 disable Codex's session-wide hook-trust bypass, which also covers non-Elwood hooks. Any other recognized blocking
-prompt fails as `blocked_prompt` and reports only its stable rule label.
+prompt fails as `blocked_prompt` and reports only its stable rule label. So does a
+startup screen Elwood does not recognize (§5.4), from the readiness deadline, as
+`<agent>-unrecognized-startup`.
 
 The built-in non-interactive launch posture is Claude `dontAsk`, and Codex
 `workspace-write` with approval policy `never`. Flags and global configuration

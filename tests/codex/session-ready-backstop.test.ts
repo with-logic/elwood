@@ -151,7 +151,7 @@ test.each([
   expect(ptys[0]!.writes.join("")).toContain("queued after the update offer");
 });
 
-test("C-ATTN-06 the startup activity uses live screen text while the host views history", async () => {
+test("C-ATTN-06 C-ATTN-09 the startup activity uses live screen text while the host views history", async () => {
   const { session, warnings, activities } = await start();
   const pty = ptys[0]!;
   pty.emitData("Earlier startup output\r\n".repeat(session.terminal.size.rows * 3));
@@ -176,8 +176,10 @@ test("C-ATTN-06 the startup activity uses live screen text while the host views 
   expect(finalListener).toHaveBeenCalledWith(
     expect.objectContaining({ kind: "unrecognized_startup", text: "New native startup screen" }),
   );
+  // An incomplete repaint is no unrecognized startup screen at the deadline (C-ATTN-09).
+  expect(session.status).toBe("running");
   expect(activities.filter((event) => event.kind === "unrecognized_startup")).toMatchObject([
-    { text: "New native startup screen" },
+    { label: "initial_ready_backstop", text: "New native startup screen" },
   ]);
   expect(warnings.map(({ code }) => code)).toEqual(["initial_ready_backstop"]);
   expect(pty.writes).toEqual([]);

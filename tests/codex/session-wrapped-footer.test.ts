@@ -69,12 +69,13 @@ test.each(
 
 test.each(
   wrapped,
-)("C-CODEX-26 rows a wider terminal did not cut hold the prompt: $cols columns, $shape", async (capture) => {
+)("C-CODEX-26 C-ATTN-09 rows a wider terminal did not cut hold the prompt: $cols columns, $shape", async (capture) => {
   const { pty, warnings, statuses } = await startAt(capture.cols * 4, capture);
-  expect(statuses).toEqual([]);
+  // Past the deadline, a composer Elwood cannot verify is a startup screen it does not recognize.
+  expect(statuses).toEqual(["blocked"]);
   expect(pty.writes).toEqual([]);
   await vi.advanceTimersByTimeAsync(60_000);
-  expect(statuses).toEqual([]);
+  expect(statuses).toEqual(["blocked"]);
   expect(pty.writes).toEqual([]);
   expect(warnings.map((warning) => warning.code)).toEqual(["initial_ready_backstop"]);
 });

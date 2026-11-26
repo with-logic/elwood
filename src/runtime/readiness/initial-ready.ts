@@ -1,6 +1,6 @@
 /**
  * Shared hook-backed readiness evidence checks and a diagnostic backstop.
- * Implements PRD §5.3/§9.4, C-API-19, and C-API-28.
+ * Implements PRD §5.3/§9.4, C-API-19, C-API-28, and the deadline of C-ATTN-09.
  *
  * On a COLD start both adapters gate the first queued message on a pre-input
  * readiness hook — Claude's `InstructionsLoaded`, Codex's `SessionStart` — the CLI's
@@ -20,6 +20,8 @@
  * fallback readiness, subject to configured-composer evidence when supplied. Its
  * backstop reports missing evidence while retaining queued input.
  */
+
+import { runContained } from "../../core/contained.ts";
 
 export type InitialReady = {
   /** Permanently cancel readiness, including frames drained after process exit. */
@@ -80,6 +82,8 @@ export type ConfiguredComposerEvidence = {
   /** The latest frame shows a configured session's composer outside any blocking dialog. */
   readonly shown: () => boolean;
   readonly onBackstop: () => void;
+  /** The deadline passed without readiness (C-ATTN-09). */
+  readonly onDeadline?: () => void;
   readonly backstopMs?: number;
 };
 
@@ -151,7 +155,11 @@ export function initialReady(
     // contained so later hooks or configured frames can retry.
     armDeadline: () => {
       if (cancelled || ready) return;
-      deadline ??= setTimeout(() => markFromTimer(), initialDeadlineMs);
+      deadline ??= setTimeout(() => {
+        markFromTimer();
+        // Observer failure must not stop the timer path, as below.
+        if (!ready) runContained(() => composer?.onDeadline?.());
+      }, initialDeadlineMs);
       backstop ??= setTimeout(() => {
         markFromTimer();
         try {

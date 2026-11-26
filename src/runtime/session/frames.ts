@@ -1,9 +1,13 @@
-/** Session-owned frame and trust-deadline observation (PRD §5.3/§5.4, C-TRUST-01). */
+/**
+ * Session-owned frame and trust-deadline observation, and the block on an unrecognized
+ * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-ATTN-09).
+ */
 import { activityFromAttention, blockingRuleIds } from "../../core/attention.ts";
 import {
   observeRenderedReading,
   type RenderedObservers,
   readRenderedFrame,
+  withBlockingRule,
 } from "../../core/rendered-observers.ts";
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
@@ -54,8 +58,14 @@ export function createSessionFrameObserver(
     const active = session();
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
     const state = trust();
+    const read = readRenderedFrame(observers, frame, state.blockedPrompt, state.inputBlocking);
+    const unrecognized = readiness.unrecognizedStartup.classify(
+      read.facts,
+      state.inputBlocking,
+      frame,
+    );
     const reading = attentionClearance(
-      readRenderedFrame(observers, frame, state.blockedPrompt, state.inputBlocking),
+      unrecognized ? withBlockingRule(read, `${observers.agent}-unrecognized-startup`) : read,
       frame.text,
       state.inputBlocking,
     );
@@ -79,6 +89,7 @@ export function createSessionFrameObserver(
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
+      readiness.unrecognizedStartup.report(frame.text);
       // Automation can consume the human clear edge. Retain its replay until a
       // positive frame shows either resumed work or an idle composer.
       replayAutomationClearance(active, reading.facts);
@@ -91,6 +102,7 @@ export function createSessionFrameObserver(
       );
     }
   };
+  readiness.onDeadline(refresh);
   return {
     refresh,
     observe: (current: RenderedFrame) => {
