@@ -55,6 +55,9 @@ function credentials(): string {
  * Only the default Claude config dir is supported: a set `CLAUDE_CONFIG_DIR` fails setup.
  * Setup failures attempt private-root cleanup and preserve the original error; disposal may report drift.
  */
+/** The editor the fixtures were captured with: the footer hint reads `ctrl+g to edit in Nvim`. */
+const questionEditor = "nvim";
+
 export async function nativeClaudeQuestionSandbox() {
   // The parent files and keychain item `claude-parent.ts` checks are the default config dir's.
   if (userConfigDirSetting())
@@ -128,7 +131,10 @@ export async function nativeClaudeQuestionSandbox() {
         HOME: home,
         CLAUDE_CONFIG_DIR: home,
         ZDOTDIR: home,
+        // Claude names this editor in its questionnaire footer, which a 60-column pane wraps.
+        EDITOR: questionEditor,
       };
+      delete env["VISUAL"];
       // Claude's temp root stays: `claude-home.ts` set it to a private directory.
       for (const key of Object.keys(env)) {
         if (isNestedClaudeVariable(key) || anthropicVariables.includes(key)) delete env[key];

@@ -46,10 +46,10 @@ export function claudeQuestionCandidate(text: string): boolean {
   if (start < 0) return false;
   // Only a composer after completed native actions can retire this panel. Question
   // copy may itself contain carets, fences, and footer text; partial panels stay held.
-  const footer = claudeQuestionFooterEnd(lines);
-  const closingFence = lines.findLastIndex((line, index) => index < footer && fence.test(line));
+  const footerEnd = claudeQuestionFooterEnd(lines);
+  const closingFence = lines.findLastIndex((line, index) => index < footerEnd && fence.test(line));
   const lastOption = lines.findLastIndex((line, index) => index < closingFence && row.test(line));
-  const questionEnd = lastOption > start ? footer : -1;
+  const questionEnd = lastOption > start ? footerEnd : -1;
   const reviewEnd = lines.findLastIndex((line) => reviewCancelRow.test(line));
   const end = Math.max(questionEnd, reviewEnd);
   return (
@@ -73,8 +73,8 @@ export function parseClaudeQuestionScreen(
       ? parseReview(frame, body, first)
       : undefined;
   }
-  const footer = claudeQuestionFooterEnd(body);
-  if (footer < 0 || !hasOnlyOptionalNamedBorder(body.slice(footer + 1))) return undefined;
+  const footerEnd = claudeQuestionFooterEnd(body);
+  if (footerEnd < 0 || !hasOnlyOptionalNamedBorder(body.slice(footerEnd + 1))) return undefined;
   const end = body.findIndex((line, index) => index > first && fence.test(line));
   if (end < 0) return undefined;
   const questionRows = body.slice(first, end);

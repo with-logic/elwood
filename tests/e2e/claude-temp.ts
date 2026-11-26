@@ -39,6 +39,14 @@ export function claudeTempFoldersNamed(root: string, folder: string): string[] {
 /** Claude kept the temp folder for `cwd` under the private temp root `root`, not in `/tmp`. */
 export function assertClaudeTempFolderUnder(root: string, cwd: string): void {
   const folder = claudeTempFolder(realpathSync(cwd));
-  assert.deepStrictEqual(claudeTempFoldersNamed(root, folder), [folder]);
-  assert.deepStrictEqual(claudeTempFoldersNamed("/tmp", folder), []);
+  assert.deepStrictEqual(
+    claudeTempFoldersNamed(root, folder),
+    [folder],
+    "Claude keeps the scratch project's temp folder under the private temp root",
+  );
+  assert.deepStrictEqual(
+    claudeTempFoldersNamed("/tmp", folder),
+    [],
+    "and never under the shared /tmp",
+  );
 }

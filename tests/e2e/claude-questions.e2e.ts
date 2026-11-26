@@ -1,4 +1,4 @@
-/** Native Claude grouped, multiline and checkbox answers, unnamed and named (PRD §5.10). */
+/** Native Claude grouped, multiline and checkbox answers, unnamed, named and narrow (PRD §5.10). */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import test, { type TestContext } from "node:test";
@@ -18,19 +18,22 @@ import {
   claudeReadyTimeoutMs,
 } from "./questions/claude-cases.ts";
 import { type ClaudeProofLifecycle, claudeProofQueue } from "./questions/claude-lifecycle.ts";
-import { type ClaudeNoticeProof, claudeNoticeProof } from "./questions/claude-notice.ts";
+import {
+  type ClaudeNoticeProof,
+  type ClaudeProofPane,
+  claudeNoticeProof,
+  expectedPaintEvidence,
+} from "./questions/claude-notice.ts";
 import { claudeQuestionRounds } from "./questions/claude-round.ts";
 import { type ClaudeRoundKind, claudeRoundsByKind } from "./questions/claude-round-kinds.ts";
 import { claudeQuestionBinary, nativeClaudeQuestionSandbox } from "./questions/claude-sandbox.ts";
 import { assertQuestionAnswerPrivacy } from "./questions/proof-files.ts";
 
-/** One isolated session: its rounds in order, whether they keep blank cells, its `--name`, and a
- * narrow width. Claude's notice does not fit the notice proof at 60 columns, so none is posted. */
+/** One isolated session: its rounds in order, its pane and its `--name`. */
 type ProofSession = {
   readonly rounds: readonly ClaudeRoundKind[];
-  readonly blankCells: boolean;
+  readonly pane: ClaudeProofPane;
   readonly name?: string;
-  readonly cols?: 60;
 };
 
 const runProof = claudeProofQueue();
@@ -50,27 +53,28 @@ function proofTest(title: string, session: ProofSession): void {
 
 proofTest(
   "C-E2E-18 native Claude grouped, free-text and checkbox answers preserve the ergonomic turn",
-  { rounds: ["grouped", "text", "long-text", "checkbox"], blankCells: true },
+  { rounds: ["grouped", "text", "long-text", "checkbox"], pane: { cols: 140, blankCells: true } },
 );
 // A named session's questionnaire closing rule replaces the notice row, so no blank cells stay.
 proofTest("C-E2E-18 a named native Claude session accepts a checkbox a person began natively", {
   rounds: ["prechecked-checkbox"],
-  blankCells: false,
+  pane: { cols: 140, blankCells: false },
   name: claudeQuestionSessionName,
 });
-proofTest("C-E2E-18 a native Claude session in a 60-column pane reads its wrapped footer", {
-  rounds: ["grouped", "checkbox"],
-  blankCells: false,
-  cols: 60,
+proofTest("C-E2E-18 a named native Claude session in a 60-column pane reads its wrapped footer", {
+  rounds: ["grouped", "text", "checkbox"],
+  pane: { cols: 60 },
+  name: claudeQuestionSessionName,
 });
 
-/** Each question follows a notice posted at the idle composer and needs native acceptance. */
+/** Each question needs native acceptance; in a 140-column pane a notice posted at the idle
+ * composer precedes it. */
 async function proveClaudeQuestions(
   t: TestContext,
   session: ProofSession,
   lifecycle: ClaudeProofLifecycle,
 ): Promise<void> {
-  const { rounds: kinds, blankCells, name, cols } = session;
+  const { rounds: kinds, pane, name } = session;
   const events: ElwoodQuestionEvent[] = [];
   const normalized: Extract<ElwoodActivityEvent, { kind: "question" }>[] = [];
   const answerMarker = randomUUID();
@@ -97,7 +101,7 @@ async function proveClaudeQuestions(
       permissionMode: "default",
       autotrust: true,
       autoupdate: false,
-      initialSize: { cols: cols ?? 140, rows: 45 },
+      initialSize: { cols: pane.cols, rows: 45 },
       ...(name === undefined ? {} : { name }),
       hooks: {
         PreToolUse(event) {
@@ -136,18 +140,11 @@ async function proveClaudeQuestions(
     const rounds = claudeRoundsByKind(round, texts, { press: sandbox.press, screen });
     // Rounds share the question waiter, the hook answer and the final-reply buffer: each settles first.
     for (const kind of kinds) {
-      if (cols === undefined) await proof.post();
+      if (pane.cols === 140) await proof.post();
       answeredIds.push(await rounds[kind]());
     }
     t.signal.throwIfAborted();
-    t.assert.deepStrictEqual(
-      [proof.drawnAtQuestion, proof.residueWhenRaised, proof.footerKeptCells],
-      [
-        kinds.map(() => cols === undefined),
-        kinds.map(() => blankCells),
-        kinds.includes("long-text"),
-      ],
-    );
+    t.assert.deepStrictEqual(proof.evidence(), expectedPaintEvidence(pane, kinds));
     // A named questionnaire keeps the session's label in a border under its footer.
     const label = (screen: string) => /─ (.+) ─$/.exec(screen.split("\n").at(-1) ?? "")?.[1];
     t.assert.deepStrictEqual(
@@ -170,7 +167,7 @@ async function proveClaudeQuestions(
     // The sandbox keeps the suite's private temp root (C-E2E-23), not the shared /tmp.
     assertClaudeTempFolderUnder(defaultClaudeTempDir, sandbox.cwd);
     t.diagnostic(
-      `${claudeQuestionLabel}${name === undefined ? "" : ` (--name "${name}")`}: ${kinds.join(" + ")}; blank cells when raised: ${proof.residueWhenRaised.join(", ")}; native PostToolUse accepted each answer; original send returned final only.`,
+      `${claudeQuestionLabel}${name === undefined ? "" : ` (--name "${name}")`}, ${pane.cols} columns: ${kinds.join(" + ")}; blank cells when raised: ${proof.residueWhenRaised.join(", ")}; wrapped footer: ${JSON.stringify(proof.wrappedFooter ?? null)}; native PostToolUse accepted each answer; original send returned final only.`,
     );
   } catch (error) {
     primaryFailure = true;
