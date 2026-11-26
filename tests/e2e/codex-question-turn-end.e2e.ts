@@ -1,27 +1,28 @@
 /** A real Codex turn that ends with its queued question on screen settles (PRD §5.3, C-ATTN-02). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ElwoodQuestionEvent } from "../../src/index.ts";
+import type { ElwoodQuestionEvent, ElwoodSessionStatus } from "../../src/index.ts";
 import { turnEndPrompt } from "./questions/codex-prompts.ts";
 import {
   publicCodexOptionAnswer,
   publicCodexQuestionSandbox,
   publicCodexQuestionSession,
-  waitForPublicCodexQuestionBefore,
+  waitForPublicCodexQuestionsBeforeReply,
 } from "./questions/codex-public-sandbox.ts";
 import { codexQuestionProofSkip } from "./questions/codex-sandbox.ts";
+import { runPublicProof } from "./questions/proof-run.ts";
 
 test("C-ATTN-02 a Codex turn that ends with its queued question on screen settles at ready", {
   skip: codexQuestionProofSkip("two valid-model turns in one session"),
   timeout: 180_000,
-}, async () => {
+}, async (t) => {
   const sandbox = await publicCodexQuestionSandbox();
   const session = publicCodexQuestionSession(sandbox);
   const events: ElwoodQuestionEvent[] = [];
-  const statuses: string[] = [];
+  const statuses: ElwoodSessionStatus[] = [];
   session.on("question", (event) => events.push(event));
   session.on("status", (event) => statuses.push(event.status));
-  try {
+  await runPublicProof(t, [() => session.close(), () => sandbox.dispose()], async () => {
     const live = await session.start();
     await live.waitForStatus((status) => status === "ready", 45_000);
     const reply = session.send(turnEndPrompt, { timeoutMs: 60_000 });
@@ -29,7 +30,7 @@ test("C-ATTN-02 a Codex turn that ends with its queued question on screen settle
     // the runner reports the failed step.
     reply.catch(() => undefined);
     const raised = () => events.filter((event) => event.phase === "raised").length === 2;
-    await waitForPublicCodexQuestionBefore(raised, reply);
+    await waitForPublicCodexQuestionsBeforeReply(raised, reply);
     const [size, color] = await session.listQuestions();
     assert.ok(size && color);
     await session.answerQuestions(size.id, [publicCodexOptionAnswer(size, "Large")], {
@@ -58,11 +59,5 @@ test("C-ATTN-02 a Codex turn that ends with its queued question on screen settle
       timeoutMs: 60_000,
     });
     assert.equal(next.trim(), "ELWOOD_END_AGAIN");
-  } finally {
-    try {
-      await session.close();
-    } finally {
-      sandbox.dispose();
-    }
-  }
+  });
 });

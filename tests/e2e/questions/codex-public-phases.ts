@@ -14,7 +14,7 @@ import {
   publicCodexOptionAnswer,
   publicCodexQuestionRecords,
   type publicCodexQuestionSandbox,
-  waitForPublicCodexQuestionBefore as waitBeforeReply,
+  waitForPublicCodexQuestionsBeforeReply as waitBeforeReply,
   waitForPublicCodexQuestion as waitFor,
 } from "./codex-public-sandbox.ts";
 

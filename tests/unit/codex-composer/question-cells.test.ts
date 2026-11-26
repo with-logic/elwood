@@ -6,6 +6,7 @@ import { codexScreenFactTableForTrustPolicy } from "../../../src/codex/screen-ta
 import { readScreenFacts } from "../../../src/core/screen-facts.ts";
 import { createAttentionClearance } from "../../../src/runtime/session/attention-clearance.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { nativeFrameOutput } from "../../fixtures/native-input-frame.ts";
 import { snapshot } from "../codex-questions/snapshot-fixtures.ts";
 
 // A queued turn that `gpt-6-luna` ended before its last answer: the prompt, the `? ` cells
@@ -17,8 +18,7 @@ const queued = snapshot("remaining-color-pending-literal.json", "0.172.0");
 /** Paint `capture` into a terminal of its size, with its cursor visible where Codex left it. */
 async function painted(capture: typeof ended) {
   const terminal = createHeadlessTerminal({ cols: capture.cols, rows: capture.rows }, () => {});
-  const cursor = `\x1b[${capture.cursorY + 1};${capture.cursorX + 1}H\x1b[?25h`;
-  await terminal.writeOutput(`\x1b[2J\x1b[H${capture.text.replaceAll("\n", "\r\n")}${cursor}`);
+  await terminal.writeOutput(nativeFrameOutput({ ...capture, title: "", visible: true }));
   return terminal;
 }
 

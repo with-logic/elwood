@@ -21,6 +21,7 @@ import {
 } from "./codex-sandbox.ts";
 import { committedCodexQuestionRecords, privateQuestionArtifacts } from "./proof-files.ts";
 
+/** An answer choosing `label` in the request's first question only; later questions are ignored. */
 export function publicCodexOptionAnswer(request: ElwoodQuestionRequest, label: string) {
   const question = request.questions[0];
   if (!question) throw new Error("Native question request contains no questions");
@@ -29,11 +30,11 @@ export function publicCodexOptionAnswer(request: ElwoodQuestionRequest, label: s
   return { questionId: question.id, optionIds: [option.id] };
 }
 
-/** A session on the pinned Codex and model inside `sandbox`, sized like the captures by default. */
-export function publicCodexQuestionSession(
-  sandbox: { readonly cwd: string; readonly stateDir: string },
-  initialSize: { readonly cols: number; readonly rows: number } = nativeQuestionSize,
-): CodexSession {
+/** A session on the pinned Codex and model inside `sandbox`, sized like the captures. */
+export function publicCodexQuestionSession(sandbox: {
+  readonly cwd: string;
+  readonly stateDir: string;
+}): CodexSession {
   return new CodexSession({
     cwd: sandbox.cwd,
     stateDir: sandbox.stateDir,
@@ -43,7 +44,7 @@ export function publicCodexQuestionSession(
     autoupdate: false,
     sandbox: "read-only",
     approvalPolicy: "never",
-    initialSize,
+    initialSize: nativeQuestionSize,
   });
 }
 
@@ -62,8 +63,9 @@ export async function waitForPublicCodexQuestion(
   }
 }
 
-/** A turn must raise its expected questions before it can finish or fail. */
-export async function waitForPublicCodexQuestionBefore(
+/** Waits for `check`, failing at once if `reply` settles first: a turn must raise its expected
+ * questions before it can finish or fail. */
+export async function waitForPublicCodexQuestionsBeforeReply(
   check: () => boolean,
   reply: Promise<string>,
   signal?: AbortSignal,
