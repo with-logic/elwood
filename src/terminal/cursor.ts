@@ -53,6 +53,11 @@ function renderIsSettled(terminal: ElwoodTerminal): boolean {
   );
 }
 
+/** Received PTY output is staged or not drawn yet. Host output does not count (C-API-28). */
+export function ptyOutputPending(terminal: ElwoodTerminal): boolean {
+  return tracked.get(terminal.xterm)?.ptyPending === true;
+}
+
 /** True for unknown tracking or received output; this does not attest banner visibility. */
 export function hasUnknownOrNonPristineOutput(terminal: ElwoodTerminal): boolean {
   return tracked.get(terminal.xterm)?.arrival !== 0;
@@ -86,18 +91,16 @@ export class RenderCursor {
   readonly nativeEvidence = new NativeRenderEvidence();
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => void this.listeners.delete(listener);
   }
   private receivedRevision = 0;
   private renderedRevision = -1;
+  private queuedPtyRevision = -1; // Writes draw in order: the last PTY batch draws last.
   private arrivals = 0;
   private renderedArrivals = 0;
   private renderedPtyArrival = 0;
   private visible = true;
   private readonly handlers: readonly { dispose(): void }[];
-
   private readonly terminal: Terminal;
   private readonly hasStagedOutput: () => boolean;
   private cachedFrame: CachedFrame | undefined;
@@ -140,11 +143,12 @@ export class RenderCursor {
 
   received(): number {
     this.arrivals += 1;
-    return this.queued();
-  }
-  /** Split/coalesced rendering advances settlement, not native arrival progress. */
-  queued(): number {
     return ++this.receivedRevision;
+  }
+  /** A staged PTY batch enters the render queue. This advances settlement, not arrivals. */
+  queued(): number {
+    this.queuedPtyRevision = ++this.receivedRevision;
+    return this.queuedPtyRevision;
   }
   get arrival(): number {
     return this.arrivals;
@@ -162,6 +166,9 @@ export class RenderCursor {
   }
   get settled(): boolean {
     return this.receivedRevision === this.renderedRevision && !this.hasStagedOutput();
+  }
+  get ptyPending(): boolean {
+    return this.hasStagedOutput() || this.renderedRevision < this.queuedPtyRevision;
   }
   get parsedVisible(): boolean {
     return this.visible;
