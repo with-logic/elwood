@@ -6,6 +6,7 @@
 import { nativeBootFrame } from "../../runtime/readiness/boot-frame.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 
+/** Claude's version banner drawn alone while it loads (C-ATTN-09). */
 export const claudeBootFrame = nativeBootFrame(/Claude Code v\d+\.\d+\.\d+/);
 
 type ClaudeStartupDiagnostics = Omit<
