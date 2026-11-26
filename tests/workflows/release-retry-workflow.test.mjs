@@ -1,6 +1,6 @@
-/** Re-runs the release tag, resolve and npm steps after a partial release. */
+/** Re-runs the release resolve and tag steps after a partial release. */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -11,9 +11,9 @@ import { runStep } from "./release-fixture.mjs";
 const scratch = mkdtempSync(join(tmpdir(), "elwood-release-retry-"));
 const origin = join(scratch, "origin.git");
 const seed = join(scratch, "seed");
-const npmrc = join(scratch, "npmrc");
 let earlier;
 let release;
+let annotated;
 
 before(() => {
   git(scratch, "init", "--bare", "--initial-branch=main", origin);
@@ -25,12 +25,9 @@ before(() => {
   git(seed, "add", "package.json");
   release = commit(seed, "Release 1.2.3");
   git(seed, "push", origin, "main");
-  // What actions/setup-node writes for `registry-url: https://registry.npmjs.org`.
-  writeFileSync(
-    npmrc,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: npm expands this npmrc placeholder.
-    "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\nregistry=https://registry.npmjs.org/\n",
-  );
+  // The workflow only creates lightweight tags; a hand-made annotated tag is not one of its own.
+  git(seed, "tag", "-a", "-m", "Annotated by hand", "annotated", release);
+  annotated = git(seed, "rev-parse", "refs/tags/annotated");
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -67,19 +64,25 @@ test("a re-run after a failed publish reuses the tag its first attempt pushed", 
   assert.equal(remoteTag("v1.0.1"), release);
 });
 
-test("a checked-out tag on another commit fails the step", () => {
-  const result = createTag(checkout("elsewhere", { "v1.0.2": earlier }), "v1.0.2");
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /tag v1\.0\.2 already exists on another commit/u);
-  assert.equal(remoteTag("v1.0.2"), earlier);
-});
+// Tag targets are read inside each test because before() assigns them.
+for (const [label, tag, target] of [
+  ["a tag on another commit", "v1.0.2", () => earlier],
+  ["an annotated tag on the release commit", "v1.0.3", () => annotated],
+]) {
+  test(`${label} rejects the tag push`, () => {
+    const result = createTag(checkout(tag, { [tag]: target() }), tag);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /\[rejected\]/u);
+    assert.equal(remoteTag(tag), target());
+  });
+}
 
 test("a tag pushed on another commit after checkout rejects the push", () => {
   const cwd = checkout("late");
-  git(seed, "push", origin, `${earlier}:refs/tags/v1.0.3`);
-  const result = createTag(cwd, "v1.0.3");
+  git(seed, "push", origin, `${earlier}:refs/tags/v1.0.4`);
+  const result = createTag(cwd, "v1.0.4");
   assert.notEqual(result.status, 0);
-  assert.equal(remoteTag("v1.0.3"), earlier);
+  assert.equal(remoteTag("v1.0.4"), earlier);
 });
 
 function resolve(tagTarget) {
@@ -102,69 +105,23 @@ function resolve(tagTarget) {
 }
 
 for (const [label, tagTarget] of [
-  ["a version bump", undefined],
+  ["a version bump", () => undefined],
   ["re-running all jobs after the tag was pushed", () => release],
 ]) {
   test(`${label} resolves a release`, () => {
-    const { result, output } = resolve(tagTarget?.());
+    const { result, output } = resolve(tagTarget());
     assert.equal(result.status, 0, result.stderr);
     assert.equal(output, "should_release=true\nversion=1.2.3\ntag=v1.2.3\n");
   });
 }
 
-test("a version bump whose tag names another commit is not released", () => {
-  const { result } = resolve(earlier);
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /tag v1\.2\.3 already exists on another commit/u);
-});
-
-// The real registry answers the lookup; only `npm publish` itself is stubbed.
-const recordPublish =
-  'npm() { if [ "$1" = publish ]; then echo "$*" >> "$PUBLISH_LOG"; else command npm "$@"; fi; }';
-const publishedFromWorkflow = {
-  version: "0.7.0",
-  commit: "5ac725b514fe26d1ef71a837f029c8f6fd15c4d3",
-};
-
-function publish(name, version, releaseCommit) {
-  const cwd = join(scratch, name);
-  mkdirSync(cwd);
-  writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "@with-logic/elwood", version }));
-  const log = join(cwd, "publish.log");
-  writeFileSync(log, "");
-  const result = runStep("name: Publish to npm", {
-    cwd,
-    env: {
-      NODE_AUTH_TOKEN: "XXXXX-XXXXX-XXXXX-XXXXX",
-      PUBLISH_LOG: log,
-      npm_config_cache: join(scratch, "npm-cache"),
-      npm_config_update_notifier: "false",
-      npm_config_userconfig: npmrc,
-    },
-    expressions: {
-      "needs.resolve.outputs.version": version,
-      "needs.secret-scan.outputs.commit": releaseCommit,
-    },
-    prelude: recordPublish,
-  });
-  return { publishes: readFileSync(log, "utf8"), result };
-}
-
-test("a re-run skips a version npm already published from the release commit", () => {
-  const { version, commit: published } = publishedFromWorkflow;
-  const { publishes, result } = publish("published", version, published);
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(publishes, "");
-  assert.match(result.stdout, /@with-logic\/elwood@0\.7\.0 is already published from/u);
-});
-
-for (const [label, version, releaseCommit] of [
-  ["an unpublished version", "0.0.0-never-published", publishedFromWorkflow.commit],
-  ["a version published from another commit", publishedFromWorkflow.version, "0".repeat(40)],
+for (const [label, tagTarget] of [
+  ["names another commit", () => earlier],
+  ["is annotated", () => annotated],
 ]) {
-  test(`${label} goes to npm publish`, () => {
-    const { publishes, result } = publish(label.replaceAll(" ", "-"), version, releaseCommit);
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(publishes, "publish --access public\n");
+  test(`a version bump whose tag ${label} is not released`, () => {
+    const { result } = resolve(tagTarget());
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /tag v1\.2\.3 already exists on another commit/u);
   });
 }

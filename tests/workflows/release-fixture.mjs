@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-export const workflow = readFileSync(
+const workflow = readFileSync(
   new URL("../../.github/workflows/release.yml", import.meta.url),
   "utf8",
 );
@@ -34,9 +34,8 @@ export function runStep(header, { cwd, env = {}, expressions = {}, prelude = "" 
   for (const [, key, value] of envBlock.matchAll(/^ {10}(\w+): (.+)$/gmu)) {
     stepEnv[key] = expand(value);
   }
-  const script =
-    /^ {8}run: \|\n((?:(?: {10}.*)?\n)+)/mu.exec(step)?.[1] ?? /^ {8}run: (.+)$/mu.exec(step)?.[1];
-  if (!script) throw new Error(`The "${header}" step has no run script.`);
+  const script = /^ {8}run: \|\n((?:(?: {10}.*)?\n)+)/mu.exec(step)?.[1];
+  if (!script) throw new Error(`The "${header}" step has no \`run: |\` script.`);
 
   const result = spawnSync(
     "bash",

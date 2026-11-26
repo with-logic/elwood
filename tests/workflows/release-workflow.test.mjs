@@ -14,7 +14,7 @@ test("GitHub release creation retries independently of npm publication", () => {
   const publish = job("publish");
   const githubRelease = job("github-release");
 
-  assert.match(publish, /npm publish --access public/);
+  assert.match(publish, /^ +npm publish --access public$/mu);
   assert.doesNotMatch(publish, /action-gh-release/);
   assert.match(githubRelease, /needs: \[resolve, publish\]/);
   assert.match(githubRelease, /uses: softprops\/action-gh-release/);
@@ -22,23 +22,29 @@ test("GitHub release creation retries independently of npm publication", () => {
   assert.doesNotMatch(githubRelease, /npm publish/);
 });
 
-// Answers only the exact lookup the step makes; any other call fails.
+// Replays real `gh api` answers for the exact lookup the step makes; any
+// other call fails. GitHub answers 404 for a draft as for a missing release.
 const releaseLookup = [
   "gh() {",
   '  [ "$GH_TOKEN" = fixture-token ] || return 2',
-  '  [ "$*" = "release view v1.2.3 --repo $GITHUB_REPOSITORY --json isDraft --jq .isDraft" ] || return 2',
-  '  [ -n "$FIXTURE_IS_DRAFT" ] || { echo "release not found" >&2; return 1; }',
-  '  echo "$FIXTURE_IS_DRAFT"',
+  '  [ "$*" = "api repos/$GITHUB_REPOSITORY/releases/tags/v1.2.3 --jq .html_url" ] || return 2',
+  '  case "$FIXTURE_STATUS" in',
+  '    200) echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/v1.2.3" ;;',
+  '    404) echo \'{"message":"Not Found","status":"404"}\'',
+  '      echo "gh: Not Found (HTTP 404)" >&2; return 1 ;;',
+  '    *) echo \'{"message":"Bad credentials","status":"401"}\'',
+  '      echo "gh: Bad credentials (HTTP 401)" >&2; return 1 ;;',
+  "  esac",
   "}",
 ].join("\n");
 
-function checkRelease(name, isDraft) {
+function checkRelease(status) {
   // GitHub creates the output file before the step runs.
-  const output = join(scratch, name);
+  const output = join(scratch, `release-lookup-${status}`);
   writeFileSync(output, "");
   const result = runStep("name: Check for a published GitHub release", {
     cwd: scratch,
-    env: { FIXTURE_IS_DRAFT: isDraft, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: "fixture/elwood" },
+    env: { FIXTURE_STATUS: status, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: "fixture/elwood" },
     expressions: { "github.token": "fixture-token", "needs.resolve.outputs.tag": "v1.2.3" },
     prelude: releaseLookup,
   });
@@ -46,22 +52,24 @@ function checkRelease(name, isDraft) {
 }
 
 test("a re-run leaves an already published GitHub release unchanged", () => {
-  const { output, result } = checkRelease("published", "false");
+  const { output, result } = checkRelease("200");
   assert.equal(result.status, 0, result.stderr);
   assert.equal(output, "published=true\n");
   assert.match(
     job("github-release"),
-    /- name: Create GitHub release\n {8}if: steps\.existing\.outputs\.published != 'true'\n/u,
+    /- name: Check for a published GitHub release\n {8}id: existing\n[\s\S]*?- name: Create GitHub release\n {8}if: steps\.existing\.outputs\.published != 'true'\n/u,
   );
 });
 
-for (const [label, isDraft] of [
-  ["a draft left by an interrupted attempt", "true"],
-  ["a missing release", ""],
-]) {
-  test(`${label} goes to the release action`, () => {
-    const { output, result } = checkRelease(label.replaceAll(" ", "-"), isDraft);
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(output, "");
-  });
-}
+test("a draft or missing GitHub release goes to the release action", () => {
+  const { output, result } = checkRelease("404");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(output, "");
+});
+
+test("a failed GitHub release lookup fails the job", () => {
+  const { output, result } = checkRelease("401");
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error::could not look up GitHub release v1\.2\.3: .*HTTP 401/su);
+  assert.equal(output, "");
+});
