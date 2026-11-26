@@ -33,7 +33,8 @@ back each entry are listed in `prd/14-conformance.md`.
   cycle)` in front of the warnings badge instead of on the status row. Elwood
   did not recognize that footer, so `send()` in Plan mode timed out after
   90 s. Answering a queued Codex choice also no longer fails as `adapter` when
-  0.172 leaves its hidden cursor after the working row's glyph or elapsed time.
+  0.172 leaves its hidden cursor after the working row's glyph or elapsed time,
+  or while it still shows the previous answer as waiting to be submitted.
 
 ## [0.8.0] - 2026-11-25
 

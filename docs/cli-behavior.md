@@ -3673,6 +3673,17 @@ answer to the remaining color choice failed as `adapter` when the glyph or the t
 the last cell drawn. Capture:
 `tests/fixtures/codex-0.172.0/questions/remaining-color-glyph-cursor.json`.
 
+**Codex shows a queued answer it has not sent above the panel.** Right after the literal
+answer, 0.172 draws `• Messages to be submitted after next tool call (press esc to
+interrupt and send immediately)`, then `  ↳ ` and the question, then the answer indented
+four spaces, between the working row and `• Queued follow-up inputs`. The hidden cursor
+stays parked on the working row above it. In eight sampled C-E2E-19 runs at 10 ms the block
+was on screen for 0.3 to 3 s. Elwood's previous answer resolves on the committed answer
+record, which landed 60 to 210 ms before Codex cleared the block. Elwood required blank
+rows between the working row and the panel, so under load the next answer started inside
+the window and failed as `adapter`, in 1 of 22 runs. Capture:
+`tests/fixtures/codex-0.172.0/questions/remaining-color-pending-literal.json`.
+
 **`gpt-6-luna` can reply before every queued answer arrives.** Asked to wait for all
 three answers, it sometimes sent its final reply about 1.4 s after the second, which
 ended the turn and withdrew the pending question (`question_answer_failed`,
