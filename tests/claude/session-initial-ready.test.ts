@@ -81,12 +81,15 @@ async function paint(session: ClaudeSessionApi, bytes: string): Promise<void> {
   await settled;
 }
 
+/** No readiness hook arrives before the verified composer. */
+const noHook = async (_session: ClaudeSessionApi) => undefined;
+
 test.each([
-  ["sendMessage", "verified composer"],
-  ["sendPrompt", "verified composer"],
-  ["sendMessage", "InstructionsLoaded"],
-  ["sendPrompt", "InstructionsLoaded"],
-] as const)("C-API-28 C-ATTN-06 C-ATTN-09 Claude holds %s on an unrecognized screen until %s", async (method, evidence) => {
+  ["sendMessage", "verified composer", noHook],
+  ["sendPrompt", "verified composer", noHook],
+  ["sendMessage", "InstructionsLoaded", instructionsLoaded],
+  ["sendPrompt", "InstructionsLoaded", instructionsLoaded],
+] as const)("C-API-28 C-ATTN-06 C-ATTN-09 Claude holds %s on an unrecognized screen until %s", async (method, _, hook) => {
   const { session, warnings, activities } = await startObservedSession();
   await paint(session, tty(themePicker));
   await vi.advanceTimersByTimeAsync(9_999);
@@ -142,13 +145,11 @@ test.each([
   await vi.advanceTimersByTimeAsync(1_000);
   expect(ptys[0]!.writes).toEqual([]);
 
-  if (evidence === "InstructionsLoaded") {
-    // The hook waits for the verified composer, as during a recognized dialog.
-    await instructionsLoaded(session);
-    await vi.advanceTimersByTimeAsync(500);
-    expect(session.status).toBe("blocked");
-    expect(ptys[0]!.writes).toEqual([]);
-  }
+  // A readiness hook waits for the verified composer, as during a recognized dialog.
+  await hook(session);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(session.status).toBe("blocked");
+  expect(ptys[0]!.writes).toEqual([]);
   await paint(session, claudeTty(claudeComposer, false));
   await vi.advanceTimersByTimeAsync(500);
   expect(session.status).toBe("blocked");
