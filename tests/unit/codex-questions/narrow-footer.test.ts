@@ -22,25 +22,33 @@ function withFooter(frame: QuestionFrame, footer: readonly string[]): QuestionFr
   const lines = [...frame.lines.slice(0, end - 1), ...footer, ...frame.lines.slice(end + 1)];
   return { ...frame, lines, text: lines.join("\n") };
 }
-const footerHint = /^(?:enter submit|⇧|tab |←\/→|esc to interrupt)/;
+const choiceTail = ["› 1. Amber", "2. Blue", "3. Other", ""];
+const editorTail = ["", "Type your answer", ""];
 
 test.each([
-  ["the first choice, wrapped at 60 columns", queuedFirst, 0, 0],
-  ["the second editor, wrapped at 50 columns", queuedSecond, 1, undefined],
-  ["the last editor on one row at 60 columns", queuedLast, 2, undefined],
-])("C-QUESTION-04 C-ATTN-02 a queued panel keeps %s", (_, frame, index, selected) => {
+  ["the first choice, wrapped at 60 columns", queuedFirst, 0, 0, choiceTail],
+  ["the second editor, wrapped at 50 columns", queuedSecond, 1, undefined, editorTail],
+  ["the last editor on one row at 60 columns", queuedLast, 2, undefined, editorTail],
+])("C-QUESTION-04 C-ATTN-02 a queued panel keeps %s", (_, frame, index, selected, tail) => {
   const view = questionView(frame);
   expect(view).toMatchObject({ kind: "queued", count: 3, index, selected });
-  expect(view?.body.some((line) => footerHint.test(line))).toBe(false);
+  // The body ends exactly above the footer's first row.
+  expect(view?.body.slice(-tail.length)).toEqual(tail);
   expect(blockingQuestionVisible(frame.text)).toBe(true);
 });
 
-test("C-QUESTION-04 C-ATTN-02 a queued panel keeps the hints Codex wraps at 40 columns", () => {
-  const narrow = withFooter(queuedFirst, [
-    "  enter submit   ⌃] skip",
-    "  ⇧→ main prompt   ⇧← next question",
-  ]);
-  expect(questionView(narrow)).toMatchObject({ kind: "queued", count: 3, index: 0, selected: 0 });
+test.each([
+  [
+    "two rows, as at 40 columns",
+    ["  enter submit   ⌃] skip", "  ⇧→ main prompt   ⇧← next question"],
+  ],
+  ["three rows", ["  enter submit   ⌃] skip", "  ⇧→ main prompt", "  ⇧← next question"]],
+  ["a row per hint", ["  enter submit", "  ⌃] skip", "  ⇧→ main prompt", "  ⇧← next question"]],
+])("C-QUESTION-04 C-ATTN-02 a queued panel keeps its footer wrapped onto %s", (_, footer) => {
+  const narrow = withFooter(queuedFirst, footer);
+  const view = questionView(narrow);
+  expect(view).toMatchObject({ kind: "queued", count: 3, index: 0, selected: 0 });
+  expect(view?.body.slice(-choiceTail.length)).toEqual(choiceTail);
   expect(blockingQuestionVisible(narrow.text)).toBe(true);
 });
 
@@ -49,8 +57,9 @@ test.each(
 )("C-QUESTION-04 C-ATTN-02 a modal question keeps its wrapped footer at %i columns", (_, frame) => {
   const view = questionView(frame);
   expect(view).toMatchObject({ kind: "blocking", count: 3, index: 0, selected: 0, notes: false });
-  expect(view?.body.some((line) => footerHint.test(line))).toBe(false);
-  expect(view?.body).toContain("ELWOOD_MODAL_COLOR: Which color?");
+  expect(view?.body[0]).toBe("ELWOOD_MODAL_COLOR: Which color?");
+  // The body ends with the wrapped option description, exactly above the footer.
+  expect(view?.body.slice(-2)).toEqual([expect.stringMatching(/\(tab\)$/), ""]);
   expect(blockingQuestionVisible(frame.text)).toBe(true);
 });
 
