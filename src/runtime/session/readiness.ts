@@ -70,8 +70,9 @@ export type ReadinessGate = InitialReadinessHold & {
   /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-11). */
   readonly unrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report">;
   /**
-   * Re-read the current frame when the deadline passes: an idle CLI does not repaint. The
-   * listener gets the terminal's current settled frame when the gate can read one.
+   * Re-read the current frame when the deadline passes, and when the startup gate's
+   * `rereadFrame` asks (Codex's effort wait): an idle CLI does not repaint. The listener gets
+   * the terminal's current settled frame when the gate can read one.
    */
   readonly setDeadlineListener: (listener: (current?: SettledFrame) => void) => void;
 };

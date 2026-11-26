@@ -89,8 +89,8 @@ export type InitialReadyBackstopWarning = {
 };
 
 /**
- * Codex's footer did not show the effort the session requested by the initial-readiness
- * backstop, so readiness was released on its status footer alone. Content-free (§5.3, C-API-28).
+ * Codex's footer did not show the effort the session requested within 50 seconds of launch,
+ * so readiness was released on its status footer alone. Content-free (§5.3, C-API-28).
  */
 export type CodexEffortUnconfirmedWarning = {
   readonly elwoodSessionId: string;

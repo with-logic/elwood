@@ -29,7 +29,8 @@ type StartupDiagnostics = {
  * The backstop emits a content-free warning. When no recognized dialog or startup
  * automation holds readiness it also emits a bounded copy of the captured screen as
  * activity. An unrecognized startup screen's report is activity too, emitted while a frame
- * is observed. The deadline re-reads the terminal, which a resize can have reflowed.
+ * is observed. The deadline re-reads the terminal, which a resize can have reflowed, and so
+ * does `rereadFrame`, for an adapter whose evidence changes with time rather than a repaint.
  */
 export function createStartupReadinessGate(
   onReady: () => void,
@@ -41,7 +42,10 @@ export function createStartupReadinessGate(
     warnings,
     events,
   }: StartupDiagnostics,
-): ReadinessGate & { observeStartupFrame(terminal: ElwoodTerminal): TerminalSnapshot } {
+): ReadinessGate & {
+  observeStartupFrame(terminal: ElwoodTerminal): TerminalSnapshot;
+  rereadFrame(): void;
+} {
   const duringDelivery = warnings.duringDelivery ?? ((deliver: () => void) => deliver());
   let screen = "";
   let capture = true;
@@ -123,9 +127,15 @@ export function createStartupReadinessGate(
       },
     },
   );
+  let deadlineListener: ((current?: SettledFrame) => void) | undefined;
+  const rereadFrame = () => deadlineListener?.(deadlineFrame());
+  gate.setDeadlineListener(rereadFrame);
   return {
     ...gate,
-    setDeadlineListener: (listener) => gate.setDeadlineListener(() => listener(deadlineFrame())),
+    setDeadlineListener: (listener) => {
+      deadlineListener = listener;
+    },
+    rereadFrame,
     ready: {
       ...gate.ready,
       cancel() {
