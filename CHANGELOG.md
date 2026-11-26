@@ -30,6 +30,21 @@ back each entry are listed in `prd/14-conformance.md`.
   stalled until it failed with `question_answer_failed` and closed the request
   as `unavailable`.
 
+- Report Claude's auto-mode setup offer, which can appear right after a turn
+  ends, as `blocked` with attention label `claude-auto-mode-offer`. A
+  `sendMessage` sent while it is visible now waits for it to close. Before, its
+  Enter answered the offer and the message was lost. When any Claude dialog
+  closes over a paste whose Enter it held, the paste now submits instead of
+  leaving the session `blocked`; awaited `send`/`stream` input that raw input
+  took over during that hold rejects without its Enter, even if the dialog stays
+  open. When a Claude turn ends in auto mode, queued input now waits until
+  Claude's idle composer has stayed unchanged for 500 ms, at most 5 s, so an
+  offer Claude has mounted but not yet painted cannot take its Enter. This holds
+  at widths where the offer's title fits on one row (about 41 columns), and the
+  next turn ends the wait. If the 5 s limit releases input from a screen that
+  never settled, a content-free `turn_end_hold_expired` warning reports it.
+  `elwood run` no longer fails when the offer appears after its prompt's turn
+  has ended.
 - Report a startup screen Elwood does not recognize as `blocked` from the
   10-second readiness deadline instead of only at the 60-second backstop. Claude's
   first-launch text-style picker and Codex's sign-in screen are examples. The
@@ -41,6 +56,13 @@ back each entry are listed in `prd/14-conformance.md`.
   way, and `elwood run` fails such a start as `blocked_prompt`. The agent's own
   header drawn alone while it loads is not reported, and the report redacts `sk-`
   API-key-shaped tokens, including a key wrapped across rows.
+- Initial readiness waits for output the agent has already sent to render. A
+  repaint still in progress, including a synchronized one, could replace the
+  configured composer Elwood last rendered, and the readiness deadline or a
+  Codex `SessionStart` hook then released queued input onto the screen that
+  replaced it.
+- A `status` or `attention` listener that throws when a frame blocks the
+  session no longer drops that frame's `terminal:data`.
 
 ## [0.8.0] - 2026-11-25
 

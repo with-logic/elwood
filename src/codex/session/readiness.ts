@@ -3,7 +3,7 @@
  * status footer), and missing evidence at the backstop is reported as a content-free
  * `initial_ready_backstop` warning (PRD §5.3, §5.7, C-API-28). Its header drawn alone, its
  * boot composer and its resume placeholder are startup screens Codex draws before that
- * footer, not unrecognized ones (§5.4, C-ATTN-09).
+ * footer, not unrecognized ones (§5.4, C-ATTN-11).
  */
 import type { InitialReadyBackstopWarning } from "../../core/warnings/lifecycle.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -13,7 +13,7 @@ import { codexComposerConfigured } from "../screen/clearance.ts";
 import { codexUnconfiguredComposerVisible } from "../update/repaint.ts";
 import type { CodexEventMap } from "./types.ts";
 
-/** Codex's header drawn alone while it loads (C-ATTN-09). */
+/** Codex's header drawn alone while it loads (C-ATTN-11). */
 export const isCodexBootFrame = createNativeBootFrameMatcher(/>_ OpenAI Codex \(v\d+\.\d+\.\d+/);
 
 export function createCodexReadinessGate(

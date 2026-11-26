@@ -2,7 +2,7 @@
  * A real Claude first launch opens on screens Elwood does not recognize. From the readiness
  * deadline the session is `blocked` on them with their text, the host answers them with
  * raw keys, and a message queued at start is then submitted onto the verified composer.
- * Implements C-E2E-28 (PRD §5.4, C-ATTN-09).
+ * Implements C-E2E-28 (PRD §5.4, C-ATTN-11).
  */
 
 import assert from "node:assert/strict";

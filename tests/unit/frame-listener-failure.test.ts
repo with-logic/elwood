@@ -1,7 +1,7 @@
 /**
  * A throwing status listener cannot drop a startup frame: a screen that blocks the session
  * after the readiness deadline, recognized or not, still reaches `terminal:data`, on both
- * adapters (PRD §5.4, C-ATTN-09).
+ * adapters (PRD §5.4, C-ATTN-11).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import {
@@ -70,7 +70,7 @@ test.each([
   ["codex", "unrecognized"],
   ["claude", "recognized"],
   ["claude", "unrecognized"],
-] as const)("C-ATTN-09 %s delivers a blocking %s frame after the deadline despite a throwing listener", async (agent, kind) => {
+] as const)("C-ATTN-11 %s delivers a blocking %s frame after the deadline despite a throwing listener", async (agent, kind) => {
   const { statuses, data, paint } = await open(agent);
   await paint(screens[agent].boot);
   await vi.advanceTimersByTimeAsync(10_500);

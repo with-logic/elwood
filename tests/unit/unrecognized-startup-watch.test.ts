@@ -1,4 +1,4 @@
-/** Which startup frames are unrecognized, and when a run of them is reported (C-ATTN-09). */
+/** Which startup frames are unrecognized, and when a run of them is reported (C-ATTN-11). */
 import { expect, test, vi } from "vitest";
 import { createUnrecognizedStartupWatch } from "../../src/runtime/readiness/unrecognized-startup.ts";
 
@@ -18,7 +18,7 @@ function watch(completed = () => true) {
   return { subject, report, configured };
 }
 
-test("C-ATTN-09 no frame is unrecognized before the deadline or after readiness", () => {
+test("C-ATTN-11 no frame is unrecognized before the deadline or after readiness", () => {
   const { subject, report } = watch();
   expect(subject.classify(idle, false, screen)).toBe(false);
   subject.report(screen.text);
@@ -38,7 +38,7 @@ test.each([
   ["visible work", { ...idle, working_visible: true }, false, screen],
   ["the configured composer", idle, false, { text: "configured" }],
   ["the adapter's own startup screen", idle, false, { text: "boot composer" }],
-] as const)("C-ATTN-09 %s is recognized and ends a run", (_, facts, automation, frame) => {
+] as const)("C-ATTN-11 %s is recognized and ends a run", (_, facts, automation, frame) => {
   const { subject, report } = watch();
   subject.deadlinePassed();
   expect(subject.classify(idle, false, screen)).toBe(true);
@@ -50,7 +50,7 @@ test.each([
   expect(report.mock.calls).toEqual([["first"], ["second"]]);
 });
 
-test("C-ATTN-09 a run of unrecognized frames reports once, with the cols the frame was drawn at", () => {
+test("C-ATTN-11 a run of unrecognized frames reports once, with the cols the frame was drawn at", () => {
   const { subject, report, configured } = watch();
   subject.deadlinePassed();
   expect(subject.classify(idle, false, { text: "frame 1", cols: 80 })).toBe(true);
@@ -61,7 +61,7 @@ test("C-ATTN-09 a run of unrecognized frames reports once, with the cols the fra
   expect(configured).toHaveBeenLastCalledWith("frame 2", 80);
 });
 
-test("C-ATTN-09 a blank or incomplete frame is not unrecognized and does not end a run", () => {
+test("C-ATTN-11 a blank or incomplete frame is not unrecognized and does not end a run", () => {
   let completed = true;
   const { subject, report } = watch(() => completed);
   subject.deadlinePassed();
@@ -82,7 +82,7 @@ test.each([
   ["the adapter's own startup screen", idle, { text: "boot composer" }, true],
   ["a recognized dialog", { ...idle, blocking_prompt_visible: true }, screen, false],
   ["the configured composer", idle, { text: "configured" }, false],
-] as const)("C-ATTN-09 after an unrecognized frame, %s keeps the block unless a hold recognizes it", (_, facts, frame, held) => {
+] as const)("C-ATTN-11 after an unrecognized frame, %s keeps the block unless a hold recognizes it", (_, facts, frame, held) => {
   const { subject } = watch();
   subject.deadlinePassed();
   expect(subject.classify(idle, false, screen)).toBe(true);

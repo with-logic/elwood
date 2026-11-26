@@ -2,6 +2,7 @@
 import { expect, test, vi } from "vitest";
 import {
   ComposerCleanup,
+  enteredComposer,
   requestComposerCleanup,
   stageComposer,
   submittedComposer,
@@ -156,4 +157,26 @@ test("C-API-56 preparation cancelled after flush resolves never starts work", as
   await expect(owner.run(work, preparation.signal)).rejects.toThrow("preparation expired");
   expect(work).not.toHaveBeenCalled();
   expect(terminal.sendInput).not.toHaveBeenCalled();
+});
+
+test.each([
+  { settle: enteredComposer, by: "entered" },
+  { settle: submittedComposer, by: "submitted" },
+  { settle: requestComposerCleanup, by: "abandoned" },
+])("C-ATTN-09 staged input awaits its Enter until $by", async ({ settle }) => {
+  const terminal = { sendInput: vi.fn() };
+  const signal = new AbortController().signal;
+  const owner = new ComposerCleanup(
+    terminal,
+    () => false,
+    signal,
+    () => signal,
+    () => terminal.sendInput.mock.calls.at(-1),
+    () => () => true,
+  );
+  expect(owner.holdsUnsubmittedInput).toBe(false);
+  stageComposer(terminal);
+  expect(owner.holdsUnsubmittedInput).toBe(true);
+  await settle(terminal);
+  expect(owner.holdsUnsubmittedInput).toBe(false);
 });

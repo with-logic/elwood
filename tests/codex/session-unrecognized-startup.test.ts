@@ -1,6 +1,6 @@
 /**
  * A Codex startup screen Elwood does not recognize blocks the session from the readiness
- * deadline, with its screen text, until a verified composer (PRD §5.4, C-ATTN-09).
+ * deadline, with its screen text, until a verified composer (PRD §5.4, C-ATTN-11).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import {
@@ -55,7 +55,7 @@ async function start() {
   return { session, statuses, activities, paint, reports };
 }
 
-test("C-ATTN-09 Codex's sign-in screen blocks at the readiness deadline until a verified composer", async () => {
+test("C-ATTN-11 Codex's sign-in screen blocks at the readiness deadline until a verified composer", async () => {
   const { session, statuses, activities, paint, reports } = await start();
   const sent = session.sendMessage("held behind the sign-in screen");
   void sent.catch(() => {});
@@ -91,7 +91,7 @@ test("C-ATTN-09 Codex's sign-in screen blocks at the readiness deadline until a 
   ]);
 });
 
-test("C-ATTN-09 an animated screen reports once, and a screen after a recognized frame again", async () => {
+test("C-ATTN-11 an animated screen reports once, and a screen after a recognized frame again", async () => {
   const { statuses, paint, reports } = await start();
   await paint(tty(signIn));
   await vi.advanceTimersByTimeAsync(10_000);
@@ -113,7 +113,7 @@ test("C-ATTN-09 an animated screen reports once, and a screen after a recognized
   expect(statuses).toEqual(["blocked"]);
 });
 
-test("C-ATTN-09 a recognized dialog keeps the session blocked under its own label", async () => {
+test("C-ATTN-11 a recognized dialog keeps the session blocked under its own label", async () => {
   const { statuses, paint, reports } = await start();
   await paint(tty(signIn));
   await vi.advanceTimersByTimeAsync(10_000);
@@ -124,7 +124,7 @@ test("C-ATTN-09 a recognized dialog keeps the session blocked under its own labe
   expect(ptys[0]!.writes).toEqual([]);
 });
 
-test("C-ATTN-09 work on screen clears the block to running", async () => {
+test("C-ATTN-11 work on screen clears the block to running", async () => {
   const { statuses, paint } = await start();
   await paint(tty(signIn));
   await vi.advanceTimersByTimeAsync(10_000);
@@ -132,7 +132,7 @@ test("C-ATTN-09 work on screen clears the block to running", async () => {
   expect(statuses).toEqual(["blocked", "running"]);
 });
 
-test("C-ATTN-09 Codex's header drawn alone while it loads is no unrecognized screen", async () => {
+test("C-ATTN-11 Codex's header drawn alone while it loads is no unrecognized screen", async () => {
   const { statuses, paint, reports } = await start();
   await paint(tty(header));
   await vi.advanceTimersByTimeAsync(12_000);
@@ -143,7 +143,7 @@ test("C-ATTN-09 Codex's header drawn alone while it loads is no unrecognized scr
   expect(statuses).toEqual(["ready"]);
 });
 
-test("C-ATTN-09 a resize before the deadline that Codex does not repaint still blocks on time", async () => {
+test("C-ATTN-11 a resize before the deadline that Codex does not repaint still blocks on time", async () => {
   const { session, statuses, activities, paint } = await start();
   await paint(tty(signIn));
   await vi.advanceTimersByTimeAsync(5_000);
@@ -159,7 +159,7 @@ test("C-ATTN-09 a resize before the deadline that Codex does not repaint still b
   });
 });
 
-test("C-ATTN-09 a status listener that throws on the block does not stop the report", async () => {
+test("C-ATTN-11 a status listener that throws on the block does not stop the report", async () => {
   const { session, statuses, reports, paint } = await start();
   session.on("status", () => {
     throw new Error("host listener failed");
@@ -170,7 +170,7 @@ test("C-ATTN-09 a status listener that throws on the block does not stop the rep
   expect(reports()).toContain("unrecognized_startup initial_ready_deadline");
 });
 
-test("C-ATTN-09 after the first readiness no screen is an unrecognized startup screen", async () => {
+test("C-ATTN-11 after the first readiness no screen is an unrecognized startup screen", async () => {
   const { statuses, paint, reports } = await start();
   // The deadline passes on the boot composer, so readiness comes after it.
   await paint(codexTty(boot));

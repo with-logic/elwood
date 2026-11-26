@@ -1,4 +1,4 @@
-/** Unknown startup snapshots preserve the bound and Unicode text and redact API keys (C-ATTN-06, C-ATTN-09). */
+/** Unknown startup snapshots preserve the bound and Unicode text and redact API keys (C-ATTN-06, C-ATTN-11). */
 import { expect, test } from "vitest";
 import { unrecognizedStartupActivity } from "../../src/core/activity/startup.ts";
 
@@ -12,7 +12,7 @@ test("C-ATTN-06 retains exactly 8192 code units when the cut is a character boun
   expect(unrecognizedStartupActivity("codex", "session", `prefix${tail}  \n`).text).toBe(tail);
 });
 
-test("C-ATTN-09 redacts API-key-shaped tokens before the bound, both whole and masked", () => {
+test("C-ATTN-11 redacts API-key-shaped tokens before the bound, both whole and masked", () => {
   const key = `sk-proj-${"Ab3_-".repeat(30)}`;
   const screen = [
     "  OPENAI_API_KEY",
@@ -35,7 +35,7 @@ test("C-ATTN-09 redacts API-key-shaped tokens before the bound, both whole and m
   );
 });
 
-test("C-ATTN-09 a whole key needs eight characters after sk-", () => {
+test("C-ATTN-11 a whole key needs eight characters after sk-", () => {
   const screen = "  sk-1234567 and sk-12345678 here\n  sk-abcdefg\n\n  sk-abcdefgh\n";
   expect(unrecognizedStartupActivity("codex", "session", screen).text).toBe(
     "  sk-1234567 and sk-[redacted] here\n  sk-abcdefg\n\n  sk-[redacted]",
@@ -44,7 +44,7 @@ test("C-ATTN-09 a whole key needs eight characters after sk-", () => {
   expect(unrecognizedStartupActivity("codex", "session", "  sk-abcdefg").text).toBe("  sk-abcdefg");
 });
 
-test("C-ATTN-09 redacts a key that wraps after its prefix onto rows of letters", () => {
+test("C-ATTN-11 redacts a key that wraps after its prefix onto rows of letters", () => {
   const key = `sk-proj-${"abcdefghijKLMNOPQRST".repeat(4)}uvwxyz`;
   const screen = [
     "  OPENAI_API_KEY",
@@ -66,7 +66,7 @@ test("C-ATTN-09 redacts a key that wraps after its prefix onto rows of letters",
   );
 });
 
-test("C-ATTN-09 redacts the field of Codex's API-key page, and the word after a row-ending key", () => {
+test("C-ATTN-11 redacts the field of Codex's API-key page, and the word after a row-ending key", () => {
   // The shape of Codex's API-key page at 80 columns, probed with every character masked: the
   // prefilled key fills one bordered row, cut at the border.
   const field = `│sk-proj-${"Ab3_-".repeat(14)}│`;
@@ -80,7 +80,7 @@ test("C-ATTN-09 redacts the field of Codex's API-key page, and the word after a 
   ).toBe("  sk-[redacted]\n  [redacted] Enter");
 });
 
-test("C-ATTN-09 a key the agent masked with dots does not continue onto the next row", () => {
+test("C-ATTN-11 a key the agent masked with dots does not continue onto the next row", () => {
   const screen = "│ ANTHROPIC_API_KEY: sk-ant-...Tail2-x_y │\n│ Do you want to use this API key? │";
   expect(unrecognizedStartupActivity("claude", "session", screen).text).toBe(
     "│ ANTHROPIC_API_KEY: sk-[redacted] │\n│ Do you want to use this API key? │",

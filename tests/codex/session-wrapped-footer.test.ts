@@ -74,7 +74,7 @@ test.each(
 
 test.each(
   wrapped,
-)("C-CODEX-26 C-ATTN-09 rows a wider terminal did not cut hold the prompt: $cols columns, $shape", async (capture) => {
+)("C-CODEX-26 C-ATTN-11 rows a wider terminal did not cut hold the prompt: $cols columns, $shape", async (capture) => {
   const { pty, warnings, statuses, reports } = await startAt(capture.cols * 4, capture);
   // Past the deadline, a composer Elwood cannot verify is a startup screen it does not recognize.
   expect(statuses).toEqual(["blocked"]);

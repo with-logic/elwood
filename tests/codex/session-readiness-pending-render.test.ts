@@ -1,7 +1,7 @@
 /**
  * Initial readiness waits for output Codex has sent to render: a repaint in progress can
  * replace the configured composer Elwood last rendered, so neither the deadline nor a
- * readiness hook marks on that composer (PRD §5.3, C-API-28, C-ATTN-09).
+ * readiness hook marks on that composer (PRD §5.3, C-API-28, C-ATTN-11).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { type CodexSessionApi, type ElwoodSessionStatus, startCodex } from "../../src/index.ts";
@@ -58,7 +58,7 @@ test("C-API-28 the deadline does not mark on a composer that a repaint in progre
   await vi.advanceTimersByTimeAsync(2_000);
   expect(writes).toEqual([]);
   expect(statuses).toEqual([]);
-  // Rendered, the screen is one Elwood does not recognize, and it blocks (C-ATTN-09).
+  // Rendered, the screen is one Elwood does not recognize, and it blocks (C-ATTN-11).
   await paint(endSync);
   expect(statuses).toEqual(["blocked"]);
   expect(writes).toEqual([]);

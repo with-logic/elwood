@@ -1,7 +1,7 @@
 /**
  * A Codex `SessionStart` hook that arrives while a startup screen Elwood does not recognize
  * blocks the session waits for the verified composer, which then releases queued input
- * once (PRD §5.4, C-ATTN-09).
+ * once (PRD §5.4, C-ATTN-11).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { type CodexSessionApi, type ElwoodSessionStatus, startCodex } from "../../src/index.ts";
@@ -18,7 +18,7 @@ afterEach(async () => {
 
 const signIn = capturedFrame("codex-0.171.0/startup/sign-in").trimEnd();
 
-test("C-ATTN-09 a SessionStart hook during the block waits for the verified composer", async () => {
+test("C-ATTN-11 a SessionStart hook during the block waits for the verified composer", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });

@@ -1,7 +1,7 @@
 /**
  * Conformance for Claude bounded initial-readiness (PRD §5.3, C-API-19, C-API-28):
  * readiness is hook-backed. The fallback deadline requires the verified composer. From
- * the deadline an unfamiliar screen blocks the session (C-ATTN-09), and the backstop
+ * the deadline an unfamiliar screen blocks the session (C-ATTN-11), and the backstop
  * diagnoses it, while queued input is held.
  */
 
@@ -89,7 +89,7 @@ test.each([
   ["sendPrompt", "verified composer", noHook],
   ["sendMessage", "InstructionsLoaded", instructionsLoaded],
   ["sendPrompt", "InstructionsLoaded", instructionsLoaded],
-] as const)("C-API-28 C-ATTN-06 C-ATTN-09 Claude holds %s on an unrecognized screen until %s", async (method, _, hook) => {
+] as const)("C-API-28 C-ATTN-06 C-ATTN-11 Claude holds %s on an unrecognized screen until %s", async (method, _, hook) => {
   const { session, warnings, activities } = await startObservedSession();
   await paint(session, tty(themePicker));
   await vi.advanceTimersByTimeAsync(9_999);

@@ -1,6 +1,6 @@
 /**
  * A resumed Claude session that opens on a screen Elwood does not recognize blocks from the
- * readiness deadline and releases queued input on a verified composer (PRD §5.4, C-ATTN-09).
+ * readiness deadline and releases queued input on a verified composer (PRD §5.4, C-ATTN-11).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import {
@@ -29,7 +29,7 @@ async function paint(session: ClaudeSessionApi, frame: string): Promise<void> {
   await settled;
 }
 
-test("C-ATTN-09 a resumed Claude session blocks on an unrecognized screen until a verified composer", async () => {
+test("C-ATTN-11 a resumed Claude session blocks on an unrecognized screen until a verified composer", async () => {
   installFakes();
   const cwd = tempDir();
   const original = await startClaude({ cwd });

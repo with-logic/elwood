@@ -7,7 +7,7 @@
  * clears to a positive idle composer — and marks resume-composer readiness. Before the
  * first readiness it also holds physical writes until a configured composer is seen; the
  * first readiness, from a hook or otherwise, ends that hold too. From the deadline until that
- * readiness it classifies unrecognized startup screens (§5.4, C-ATTN-09).
+ * readiness it classifies unrecognized startup screens (§5.4, C-ATTN-11).
  * Implements PRD §5.3 (C-API-28).
  */
 
@@ -60,7 +60,7 @@ export type ReadinessGate = InitialReadinessHold & {
     frame: string,
     cols?: number,
   ) => void;
-  /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-09). */
+  /** Unrecognized startup screens; without adapter evidence none is classified (C-ATTN-11). */
   readonly unrecognizedStartup: Pick<UnrecognizedStartupWatch, "classify" | "report">;
   /**
    * Re-read the current frame when the deadline passes: an idle CLI does not repaint. The

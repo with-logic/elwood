@@ -2,7 +2,7 @@
  * The checks the real-CLI unrecognized startup proofs share. Within 20 s of the CLI's first
  * output the session is `blocked` with the screen's attention and has reported the screen
  * once with the deadline label. It holds the message queued at start and has written
- * nothing to the screen (C-E2E-28, C-E2E-29, PRD §5.4, C-ATTN-09).
+ * nothing to the screen (C-E2E-28, C-E2E-29, PRD §5.4, C-ATTN-11).
  */
 // biome-ignore-all lint/suspicious/noMisplacedAssertion: Both proofs share these assertions.
 import assert from "node:assert/strict";

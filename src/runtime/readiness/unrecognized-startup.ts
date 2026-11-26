@@ -1,7 +1,7 @@
 /**
  * Classifies the frames of a startup screen Elwood does not recognize, from the readiness
  * deadline until the first readiness, and reports each run of them once.
- * Implements PRD §5.4 "Unrecognized agent startup screen" (C-ATTN-09).
+ * Implements PRD §5.4 "Unrecognized agent startup screen" (C-ATTN-11).
  */
 import type { ComposerReadyFacts } from "./initial-ready.ts";
 

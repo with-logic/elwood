@@ -87,7 +87,7 @@ describe("executeRun", () => {
   test.each([
     "claude-permission-dialog",
     "claude-unrecognized-startup",
-  ])("C-CLI-05 C-ATTN-09 blocking %s attention stops before user submission", async (label) => {
+  ])("C-CLI-05 C-ATTN-11 blocking %s attention stops before user submission", async (label) => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {
       await current.start();

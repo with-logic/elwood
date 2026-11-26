@@ -1,13 +1,14 @@
 /**
  * Claude rendered-screen fact table for turn-state and attention detection.
  * Implements PRD §5.3, C-TURN-01 through C-TURN-05, and C-ATTN-01 through
- * C-ATTN-05, and login acknowledgement (C-API-43).
+ * C-ATTN-05, the auto-mode setup offer (C-ATTN-09), and login acknowledgement (C-API-43).
  */
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../terminal/headless.ts";
+import { claudeAutoModeOfferRuleId, isClaudeAutoModeOffer } from "./auto-mode-offer.ts";
 import { claudeNamedLabel } from "./composer/border.ts";
 import { readClaudeInputCursor } from "./composer/cursor.ts";
 import {
@@ -97,7 +98,7 @@ function verifiesClaudeComposer(
 export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
   verifiedAgainst:
-    "claude 2.1.258; question dialog and manual footer: 2.1.305; working title: 2.1.310; login success: field report 2026-11-18",
+    "claude 2.1.258; question dialog and manual footer: 2.1.305; working title: 2.1.310; login success: field report 2026-11-18; auto-mode offer: 2.1.332",
   rules: [
     {
       id: "claude-login-success",
@@ -108,6 +109,11 @@ export const claudeScreenFactTable: ScreenFactTable = {
       id: "claude-question-dialog",
       fact: "blocking_prompt_visible",
       match: claudeQuestionCandidate,
+    },
+    {
+      id: claudeAutoModeOfferRuleId,
+      fact: "blocking_prompt_visible",
+      match: isClaudeAutoModeOffer,
     },
     { id: "claude-composer-marker", fact: "composer_visible", all: [/^\s*❯/m] },
     { id: "claude-working-footer", fact: "working_visible", all: [/esc to interrupt/i] },

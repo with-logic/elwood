@@ -1,6 +1,6 @@
 /**
  * Recognizes a frame a CLI draws while it loads: its own header and nothing a person could
- * answer. Such a frame is not an unrecognized startup screen (PRD §5.4, C-ATTN-09).
+ * answer. Such a frame is not an unrecognized startup screen (PRD §5.4, C-ATTN-11).
  */
 
 /**

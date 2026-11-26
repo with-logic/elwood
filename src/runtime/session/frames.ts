@@ -1,6 +1,6 @@
 /**
  * Session-owned frame and trust-deadline observation, and the block on an unrecognized
- * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-ATTN-09).
+ * startup screen (PRD §5.3/§5.4, C-TRUST-01, C-ATTN-11).
  */
 import { activityFromAttention, blockingRuleIds } from "../../core/attention.ts";
 import { runContained } from "../../core/contained.ts";
@@ -115,7 +115,7 @@ export function createSessionFrameObserver(
     }
   };
   // A throwing status, attention or readiness listener cannot drop the frame: the session
-  // finishes processing it, and its terminal data is still delivered (C-ATTN-09).
+  // finishes processing it, and its terminal data is still delivered (C-ATTN-11).
   const refresh = () => runContained(refreshFrame);
   readiness.setDeadlineListener((current) => {
     if (frame !== undefined && current !== undefined) frame = { ...frame, ...current };

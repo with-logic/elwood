@@ -1,4 +1,4 @@
-/** Bound the live-only startup screen activity (PRD §5.4, C-ATTN-06, C-ATTN-09). */
+/** Bound the live-only startup screen activity (PRD §5.4, C-ATTN-06, C-ATTN-11). */
 import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 import type { ElwoodAgentKind } from "./index.ts";
 
@@ -42,7 +42,7 @@ function redactApiKeys(screen: string): string {
     .join("\n");
 }
 
-/** Reported from the readiness deadline (C-ATTN-09) or at the backstop (C-ATTN-06). */
+/** Reported from the readiness deadline (C-ATTN-11) or at the backstop (C-ATTN-06). */
 export type UnrecognizedStartupLabel =
   | "initial_ready_deadline"
   | InitialReadyBackstopWarning["code"];

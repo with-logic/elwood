@@ -112,7 +112,7 @@ test("C-CLAUDE-10 the same real 2.1.310 launch reports its answer once, when the
   ]);
 });
 
-test("C-ATTN-09 the boot alone, slowed until only its banner shows at the readiness deadline, never blocks", async () => {
+test("C-ATTN-11 the boot alone, slowed until only its banner shows at the readiness deadline, never blocks", async () => {
   installFakes();
   const live = await startClaude({ cwd: tempDir() });
   session = live;

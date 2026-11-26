@@ -1,6 +1,6 @@
 /**
  * Shared hook-backed readiness evidence checks and a diagnostic backstop.
- * Implements PRD §5.3/§9.4, C-API-19, C-API-28, and the deadline of C-ATTN-09.
+ * Implements PRD §5.3/§9.4, C-API-19, C-API-28, and the deadline of C-ATTN-11.
  *
  * On a COLD start both adapters gate the first queued message on a pre-input
  * readiness hook — Claude's `InstructionsLoaded`, Codex's `SessionStart` — the CLI's
@@ -82,7 +82,7 @@ export type ConfiguredComposerEvidence = {
   /** The latest frame shows a configured session's composer outside any blocking dialog. */
   readonly shown: () => boolean;
   readonly onBackstop: () => void;
-  /** The deadline passed without readiness (C-ATTN-09). */
+  /** The deadline passed without readiness (C-ATTN-11). */
   readonly onDeadline?: () => void;
   readonly backstopMs?: number;
 };

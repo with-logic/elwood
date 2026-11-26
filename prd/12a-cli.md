@@ -64,7 +64,11 @@ documented in §5.1. `--no-trust` disables that authorization but does not
 disable Codex's session-wide hook-trust bypass, which also covers non-Elwood hooks. Any other recognized blocking
 prompt fails as `blocked_prompt` and reports only its stable rule label. So does a
 startup screen Elwood does not recognize (§5.4), from the readiness deadline, as
-`<agent>-unrecognized-startup`.
+`<agent>-unrecognized-startup`. The one
+exception is Claude's auto-mode setup offer (`claude-auto-mode-offer`, §5.3) once
+the prompt's own turn has gone `running` and back to `ready`: the answer is
+complete by then, so the run finishes normally. The offer still fails the run as
+`blocked_prompt` before that point, such as after a persona turn.
 
 The built-in non-interactive launch posture is Claude `dontAsk`, and Codex
 `workspace-write` with approval policy `never`. Flags and global configuration

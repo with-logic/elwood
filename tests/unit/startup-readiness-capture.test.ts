@@ -1,6 +1,6 @@
 /**
  * Startup screen capture ends when the session cancels readiness (C-ATTN-06), and a frame
- * is completed only while no output has arrived since it rendered (C-ATTN-09).
+ * is completed only while no output has arrived since it rendered (C-ATTN-11).
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { createStartupReadinessGate } from "../../src/runtime/session/startup-readiness.ts";
@@ -36,7 +36,7 @@ test("C-ATTN-06 stop capturing startup screens after cancellation", async () => 
   }
 });
 
-test("C-ATTN-09 a frame the deadline re-reads after more output arrived is not unrecognized", async () => {
+test("C-ATTN-11 a frame the deadline re-reads after more output arrived is not unrecognized", async () => {
   const terminal = createHeadlessTerminal({ cols: 40, rows: 5 }, () => {});
   const emit = vi.fn();
   const readiness = createStartupReadinessGate(() => {}, false, {

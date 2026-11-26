@@ -1,6 +1,6 @@
 /**
  * Publish an unrecognized startup screen from the readiness deadline, and the
- * initial-readiness backstop with its last settled screen (PRD §5.4, C-ATTN-06, C-ATTN-09).
+ * initial-readiness backstop with its last settled screen (PRD §5.4, C-ATTN-06, C-ATTN-11).
  */
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { unrecognizedStartupActivity } from "../../core/activity/startup.ts";
@@ -14,7 +14,7 @@ import { createReadinessGate, type ReadinessGate, type SettledFrame } from "./re
 type StartupDiagnostics = {
   readonly session: { readonly agent: ElwoodAgentKind; readonly elwoodSessionId: string };
   readonly configured: (frame: string, cols?: number) => boolean;
-  /** The adapter's own screens before its configured composer (C-ATTN-09). */
+  /** The adapter's own screens before its configured composer (C-ATTN-11). */
   readonly nativeStartupScreen: (frame: string) => boolean;
   readonly warnings: {
     emitWarnings(warnings: readonly InitialReadyBackstopWarning[]): void;
