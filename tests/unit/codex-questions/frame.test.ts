@@ -6,7 +6,7 @@ import { matchesQuestion, questionView, queuedBadge } from "../../../src/codex/q
 import { codexScreenFactTable } from "../../../src/codex/screen-table.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 import { readScreenFacts } from "../../../src/core/screen-facts.ts";
-import { captured, frame } from "./helpers.ts";
+import { captured, frame, withDrawnRows } from "./helpers.ts";
 import { snapshot } from "./snapshot-fixtures.ts";
 
 test("recognizes modal input blocking independently of queued availability", () => {
@@ -104,21 +104,28 @@ test("validates full prompt and ordered option labels", () => {
     ...question,
     options: [{ label: "Amber", description: "Warm" }, { label: "Blue" }],
   };
-  const withDescription = (description: string) => ({
-    ...view,
-    body: view.body.map((line) => line.replace("1. Amber", `1. Amber  ${description}`)),
-  });
+  const withDescription = (description: string) =>
+    withDrawnRows(
+      view,
+      view.rawBody.map((line) => line.replace("1. Amber", `1. Amber  ${description}`)),
+    );
   expect(matchesQuestion(withDescription("Warm"), described)).toBe(true);
   expect(matchesQuestion(withDescription("Cold"), described)).toBe(false);
-  const quoted = {
-    ...view,
-    body: view.body
-      .map((line) => (line === question.prompt ? "Foreign heading" : line))
-      .concat(question.prompt),
-  };
+  const quoted = withDrawnRows(
+    view,
+    view.rawBody
+      .map((line) => (line.trim() === question.prompt ? "  Foreign heading" : line))
+      .concat(`  ${question.prompt}`),
+  );
   expect(matchesQuestion(quoted, question)).toBe(false);
   expect(
-    matchesQuestion({ ...view, body: view.body.filter((line) => line !== "1 of 2") }, question),
+    matchesQuestion(
+      withDrawnRows(
+        view,
+        view.rawBody.filter((line) => line.trim() !== "1 of 2"),
+      ),
+      question,
+    ),
   ).toBe(false);
 });
 
