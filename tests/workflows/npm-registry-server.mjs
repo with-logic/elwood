@@ -2,12 +2,17 @@
  * Serves npm registry documents on localhost for npm-registry-fixture.mjs.
  * Once listening, it writes an npmrc for itself to the path in its first
  * argument, as actions/setup-node writes one, and prints its port.
- * `/<name>` answers a packument and `/<name>/<version>` one version's
- * document, as registry.npmjs.org does. @with-logic/elwood is the recorded
- * packument. Two copies of it change one recorded fact each:
- * @with-logic/elwood-reconfigured has another trusted-publisher configuration,
- * and @with-logic/elwood-unrecorded has no commit or publisher for 0.8.0.
- * @with-logic/registry-down answers 500, and anything else 404.
+ * `/<name>` answers a packument, and `/<name>/<version>` the packument's entry
+ * for that version or a 404 naming it, as registry.npmjs.org was checked to
+ * answer for each recorded version and a missing one.
+ * @with-logic/elwood is the recorded packument. Copies of it change one
+ * recorded fact each: @with-logic/elwood-reconfigured has another
+ * trusted-publisher configuration, and @with-logic/elwood-unrecorded has no
+ * commit or publisher for 0.8.0 and no configuration ID for 0.7.0.
+ * @with-logic/elwood-flaky answers 503, and @with-logic/elwood-dropped closes
+ * the connection, the first time each path is requested.
+ * @with-logic/registry-down answers 500, @with-logic/registry-garbled answers
+ * 200 with a body that is not JSON, and anything else 404.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -26,28 +31,46 @@ for (const version of Object.values(reconfigured.versions)) {
 const unrecorded = copy("@with-logic/elwood-unrecorded");
 delete unrecorded.versions["0.8.0"].gitHead;
 delete unrecorded.versions["0.8.0"]._npmUser;
+delete unrecorded.versions["0.7.0"]._npmUser.trustedPublisher.oidcConfigId;
 
 const packuments = new Map(
-  [JSON.parse(recorded), reconfigured, unrecorded].map((packument) => [packument.name, packument]),
+  [
+    JSON.parse(recorded),
+    reconfigured,
+    unrecorded,
+    copy("@with-logic/elwood-flaky"),
+    copy("@with-logic/elwood-dropped"),
+  ].map((packument) => [packument.name, packument]),
 );
 
-/** Returns the document a registry path names, or undefined for a 404. */
+/** Returns the status and document registry.npmjs.org answers a path with. */
 function documentAt(path) {
-  if (packuments.has(path)) return packuments.get(path);
+  if (packuments.has(path)) return [200, packuments.get(path)];
   const slash = path.lastIndexOf("/");
-  return packuments.get(path.slice(0, slash))?.versions[path.slice(slash + 1)];
+  const versions = packuments.get(path.slice(0, slash))?.versions;
+  if (!versions) return [404, { error: "Not found" }];
+  const version = path.slice(slash + 1);
+  return Object.hasOwn(versions, version)
+    ? [200, versions[version]]
+    : [404, `version not found: ${version}`];
 }
+
+const interrupted = new Set();
 
 const server = createServer((request, response) => {
   const path = decodeURIComponent(new URL(request.url ?? "/", "http://registry").pathname.slice(1));
-  const document = documentAt(path);
-  if (document) {
-    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(document));
-  } else if (path.startsWith("@with-logic/registry-down")) {
-    response.writeHead(500, { "content-type": "application/json" }).end('{"error":"fixture"}');
-  } else {
-    response.writeHead(404, { "content-type": "application/json" }).end('{"error":"Not found"}');
+  const reply = (status, body) =>
+    response.writeHead(status, { "content-type": "application/json" }).end(body);
+  const scope = path.split("/", 2).join("/");
+  if (scope === "@with-logic/registry-down") return reply(500, '{"error":"fixture"}');
+  if (scope === "@with-logic/registry-garbled") return reply(200, "<!doctype html>");
+  if (/^@with-logic\/elwood-(?:flaky|dropped)$/u.test(scope) && !interrupted.has(path)) {
+    interrupted.add(path);
+    if (scope.endsWith("dropped")) return request.socket.destroy();
+    return reply(503, '{"error":"fixture"}');
   }
+  const [status, document] = documentAt(path);
+  return reply(status, JSON.stringify(document));
 });
 server.listen(0, "127.0.0.1", () => {
   const { port } = server.address();

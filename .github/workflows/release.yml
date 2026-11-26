@@ -243,8 +243,9 @@ jobs:
       # This relies on a trusted publisher configured at npmjs.com for
       # @with-logic/elwood pointing at this repository AND this workflow
       # filename (release.yml). Renaming this file breaks publishing until the
-      # npmjs.com configuration is updated to match. Provenance is implied by
-      # trusted publishing, so the flag is not passed.
+      # npmjs.com configuration is updated to match, and a reconfiguration
+      # also needs NPM_TRUSTED_PUBLISHER_CONFIG_ID below updated. Provenance is
+      # implied by trusted publishing, so the flag is not passed.
       # Requires npm >= 11.5.1 and Node >= 22.14.0 (Node 24.x ships npm 11.6+).
       #
       # BOOTSTRAP: a trusted publisher can only be attached to a package that
@@ -256,29 +257,41 @@ jobs:
       # npmjs.org rather than GitHub Packages). After that first publish,
       # configure the trusted publisher at
       # npmjs.com/package/@with-logic/elwood/access and every later release
-      # runs tokenlessly through this workflow.
+      # runs tokenlessly through this workflow. Once one has, set
+      # NPM_TRUSTED_PUBLISHER_CONFIG_ID below from it.
       #
-      # One lookup reads this version's document from the registry directly:
-      # `npm view` would redact the trusted-publisher configuration ID, as it
-      # redacts every UUID-shaped value. The document records the commit a
-      # version was published from as `gitHead`, which any publisher can set,
-      # and, for trusted publishing, the configuration that published it as
-      # `_npmUser.trustedPublisher.oidcConfigId`. NPM_TRUSTED_PUBLISHER is this
-      # workflow's configuration, recorded on every release since 0.6.0. After
-      # reconfiguring the trusted publisher at npmjs.com, update it. Until
-      # then, a re-run after a successful publish fails instead of skipping;
-      # a first publish is unaffected.
+      # One lookup reads this version's document from the registry directly,
+      # because `npm view` would redact the configuration ID, as it redacts
+      # every UUID-shaped value. Like npm, it retries a timeout, a lost
+      # connection, or HTTP 408, 429 or 5xx `fetch-retries` times (2 by
+      # default), waiting `fetch-retry-mintimeout` between attempts. The
+      # document records the commit a version was published from as `gitHead`,
+      # which any publisher can set, and, for trusted publishing, the
+      # configuration that published it as
+      # `_npmUser.trustedPublisher.oidcConfigId`.
+      #
+      # NPM_TRUSTED_PUBLISHER_CONFIG_ID is this workflow's configuration, the
+      # `oidcConfigId` recorded on every release since 0.2.0. After the trusted
+      # publisher is reconfigured, copy it from the first release published
+      # under the new configuration, at
+      # https://registry.npmjs.org/@with-logic%2felwood/<version>, and record
+      # that release for the publish tests, which replay releases published
+      # under this ID. A re-run runs this file as it was at the release commit,
+      # so when that copy names another configuration, a re-run after a
+      # successful publish fails here instead of skipping; publish the GitHub
+      # release by hand with `gh release create <tag> --generate-notes`. A
+      # first publish is unaffected.
       # - Not on npm (404): publish.
       # - Published by this workflow's trusted publisher from this commit: a
       #   re-run has nothing left to publish.
-      # - Published any other way: fail, because npm never replaces a version.
-      #   The log names the commit and the kind of publisher, never the
-      #   publishing account.
-      # - Anything else, including a failed or timed-out lookup, a document
-      #   without a commit or publisher, or no answer: fail. A re-run retries.
+      # - On npm any other way, including without a recorded commit or
+      #   publisher: fail, because npm never replaces a version. The log names
+      #   the commit and the kind of publisher, never the publishing account.
+      # - Anything else, including a lookup that still fails after its retries
+      #   or gives no answer: fail. A re-run retries.
       - name: Publish to npm
         env:
-          NPM_TRUSTED_PUBLISHER: 7e80842b-dceb-4e20-ac47-8dba36a3ae27
+          NPM_TRUSTED_PUBLISHER_CONFIG_ID: 7e80842b-dceb-4e20-ac47-8dba36a3ae27
           RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
@@ -286,25 +299,43 @@ jobs:
           name="$(node -p 'require("./package.json").name')"
           package="$name@$VERSION"
           registry="$(npm config get registry)"
+          retries="$(npm config get fetch-retries)"
+          retry_delay="$(npm config get fetch-retry-mintimeout)"
           outcome="$(node --input-type=module -e '
-            const [registry, name, version, commit, trustedPublisher] = process.argv.slice(1);
+            import { setTimeout as sleep } from "node:timers/promises";
+            const [registry, name, version, commit, expectedConfigId, retries, retryDelay] = process.argv.slice(1);
+            const url = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
+            async function lookup() {
+              for (let retry = 0; ; retry += 1) {
+                const response = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch((error) => error);
+                const transient = response instanceof Error || [408, 429].includes(response.status) || response.status >= 500;
+                if (!(transient && retry < Number(retries))) {
+                  if (response instanceof Error) throw response;
+                  return response;
+                }
+                await sleep(Number(retryDelay));
+              }
+            }
             async function classify() {
-              const base = registry.endsWith("/") ? registry : `${registry}/`;
-              const url = new URL(`${name.replace("/", "%2f")}/${version}`, base);
-              const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+              const response = await lookup();
               if (response.status === 404) return "unpublished";
               if (!response.ok) return `lookup-failed HTTP ${response.status}`;
               const manifest = Object(await response.json());
-              const head = manifest.gitHead;
               const user = manifest._npmUser;
-              if (typeof head !== "string" || !(user instanceof Object)) return "lookup-incomplete";
-              const config = user.trustedPublisher?.oidcConfigId;
-              if (head === commit && config === trustedPublisher) return "published-here";
-              const by = config === trustedPublisher ? "this workflow" : config ? "another trusted publisher" : "another account";
-              return `published-elsewhere from ${head} by ${by}`;
+              const publisher = user?.trustedPublisher;
+              const configId = publisher?.oidcConfigId;
+              if (manifest.gitHead === commit && configId === expectedConfigId) return "published-here";
+              const from = typeof manifest.gitHead === "string" ? manifest.gitHead : "an unrecorded commit";
+              const by =
+                configId === expectedConfigId ? "this workflow"
+                : publisher instanceof Object
+                  ? `a trusted publisher with configuration ID ${JSON.stringify(configId ?? null)}, not NPM_TRUSTED_PUBLISHER_CONFIG_ID`
+                : user instanceof Object ? "another account"
+                : "an unrecorded publisher";
+              return `already-on-npm from ${from} by ${by}`;
             }
             console.log(await classify().catch((error) => `lookup-failed ${error.cause?.code ?? error.name}`));
-          ' "$registry" "$name" "$VERSION" "$RELEASE_COMMIT" "$NPM_TRUSTED_PUBLISHER")"
+          ' "$registry" "$name" "$VERSION" "$RELEASE_COMMIT" "$NPM_TRUSTED_PUBLISHER_CONFIG_ID" "$retries" "$retry_delay")"
           echo "Registry lookup for $package: ${outcome:-no answer}"
           case "$outcome" in
             unpublished)
@@ -313,8 +344,8 @@ jobs:
             published-here)
               echo "This workflow already published $package from $RELEASE_COMMIT; skipping."
               ;;
-            "published-elsewhere "*)
-              echo "::error::$package is already on npm, ${outcome#published-elsewhere }; npm never replaces a version"
+            "already-on-npm "*)
+              echo "::error::$package is already on npm, ${outcome#already-on-npm }; npm never replaces a version"
               exit 1
               ;;
             *)
