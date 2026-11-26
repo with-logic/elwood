@@ -80,8 +80,9 @@ export type ReadinessGate = InitialReadinessHold & {
 export type SettledFrame = { readonly text: string; readonly cols: number };
 
 /**
- * An adapter's `composer.configured`, when supplied, proves a rendered composer belongs
- * to a configured session. The initial deadline then marks only onto such a frame, and
+ * An adapter's `composer.configured`, when supplied, is its readiness evidence for a rendered
+ * composer: for Codex, its status footer, with the requested effort's label once Codex applied
+ * one (§5.3). The initial deadline then marks only onto such a frame, and
  * the resume composer marks on nothing else: without it, a resume waits for a hook or
  * the deadline, and every write before readiness waits for a hook (C-API-28). The
  * latest frame is checked only when readiness or a held write asks, and only once the

@@ -14,7 +14,7 @@ type StartupDiagnostics = {
   readonly session: { readonly agent: ElwoodAgentKind; readonly elwoodSessionId: string };
   readonly configured: (frame: string, cols?: number) => boolean;
   /** The adapter's own screens before its configured composer (C-ATTN-11). */
-  readonly nativeStartupScreen: (frame: string) => boolean;
+  readonly nativeStartupScreen: (frame: string, cols?: number) => boolean;
   readonly warnings: {
     emitWarnings(warnings: readonly InitialReadyBackstopWarning[]): void;
     duringDelivery?(deliver: () => void): void;
