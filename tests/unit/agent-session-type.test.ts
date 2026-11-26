@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
-import type { AgentDialogRequest } from "../../src/core/dialogs/types.ts";
+import type { WorkspaceTrustDialogRequest } from "../../src/core/dialogs/types.ts";
 import {
   type ClaudeEventMap,
   type ClaudeSession,
@@ -77,7 +77,7 @@ describe("ElwoodAgentSession", () => {
   });
 
   test("C-CLAUDE-26 a request for either agent cannot carry the other agent's facts", () => {
-    type Either = AgentDialogRequest<"claude" | "codex">;
+    type Either = WorkspaceTrustDialogRequest<"claude" | "codex">;
     const target = { targetPath: "/workspace", targetScope: "folder" } as const;
     const request = {
       id: "1",

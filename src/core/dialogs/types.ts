@@ -1,4 +1,4 @@
-/** Public workspace trust dialog requests, events, and answer options (PRD §5.3, §5.13). */
+/** Public native dialog requests, events, and answer options (PRD §5.3, §5.13). */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 
@@ -30,8 +30,8 @@ export type WorkspaceTrustFacts<Agent extends ElwoodAgentKind> = Agent extends "
     }
   : { readonly agent: Agent };
 
-/** One agent's request. Internal code that is generic over the agent builds and holds this. */
-export type AgentDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTarget &
+/** One agent's workspace trust request, which internal code generic over the agent builds. */
+export type WorkspaceTrustDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTarget &
   WorkspaceTrustFacts<Agent> & {
     readonly id: string;
     readonly elwoodSessionId: string;
@@ -42,11 +42,36 @@ export type AgentDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTa
   };
 
 /**
- * A workspace trust request. For `ElwoodAgentKind` it is a union that narrowing `agent` to
- * `"claude"` resolves to the Claude request, with `disclosesHooks`.
+ * A native workspace trust question (C-ATTN-07, C-ATTN-08). For `ElwoodAgentKind` it is a
+ * union that narrowing `agent` to `"claude"` resolves to the Claude request, with
+ * `disclosesHooks`.
+ */
+export type ElwoodTrustDialogRequest<Agent extends ElwoodAgentKind = "codex"> =
+  WorkspaceTrustDialogRequest<Agent>;
+
+/**
+ * Codex's update offer, once Elwood's own skip does not answer it (C-ATTN-12). Claude
+ * draws no update screen, so only Codex sessions report one.
+ */
+export type ElwoodUpdateDialogRequest = {
+  readonly id: string;
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly kind: "update";
+  readonly label: "codex_update";
+  /** The installed and offered Codex versions, when the banner names them. */
+  readonly versions?: { readonly installed: string; readonly offered: string };
+  readonly text: string;
+  readonly choices: readonly ElwoodDialogChoice[];
+};
+
+/**
+ * A native dialog request, discriminated by `kind`. Only Codex sessions list and announce
+ * updates, which hosts answer at the terminal rather than with `answerDialog()`.
  */
 export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> =
-  AgentDialogRequest<Agent>;
+  | ElwoodTrustDialogRequest<Agent>
+  | (Agent extends "codex" ? ElwoodUpdateDialogRequest : never);
 
 export type ElwoodDialogEvent<Agent extends ElwoodAgentKind = "codex"> = {
   readonly request: ElwoodDialogRequest<Agent>;

@@ -17,7 +17,7 @@ import {
   claudeHooksPromptCaptures,
   claudeWorkspaceTrustScreen,
   claudeHooksSettingsLoad as load,
-  selectClaudeHooksYes,
+  selectClaudeWorkspaceTrustYes,
   claudeHooksWarning as warning,
 } from "../helpers/claude-workspace-trust-screen.ts";
 
@@ -44,7 +44,7 @@ test.each([
   ["unwrapped", wide],
   ["wrapped at 100 columns", wrapped],
 ])("C-CLAUDE-26 autotrust answers the hooks prompt (%s)", async (_, frame) => {
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject(answered);
 });
 
 test.each(
@@ -53,13 +53,13 @@ test.each(
   const view = trustView(frame, "claude", claudeTrustClearance);
   expect(view).toMatchObject({ kind: "candidate", valid: true });
   expect(view.kind === "candidate" && claudeWorkspaceDisclosesHooks(view.dialog.header)).toBe(true);
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject(answered);
 });
 
 test("C-CLAUDE-26 autotrust answers the hooks prompt with only the closing explanation", async () => {
   const frame = wide.replace(likeYourOwn, "");
   expect(frame).not.toContain("Like your own code");
-  expect(await autotrustAnswer(frame, selectClaudeHooksYes)).toMatchObject(answered);
+  expect(await autotrustAnswer(frame, selectClaudeWorkspaceTrustYes)).toMatchObject(answered);
 });
 
 test.each([

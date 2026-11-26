@@ -28,10 +28,10 @@ import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import { confirmCodexRejection } from "../transcript/rejection.ts";
-import type { CodexWorkspaceTrustDialogs } from "../workspace-trust/dialogs.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { switchCodexModel } from "./config-switch.ts";
+import type { CodexSessionDialogs } from "./dialogs.ts";
 import { observeCodexInitialReady } from "./initial-ready.ts";
 import { bindCodexRolloutLocator } from "./rollout-locator.ts";
 import { CodexTurnCommit } from "./turn-commit.ts";
@@ -59,7 +59,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit = new PtyExitLatch(this.pty);
   private readonly resolveConfigPath: (signal: AbortSignal) => Promise<string>;
-  private readonly dialogs: CodexWorkspaceTrustDialogs;
+  private readonly dialogs: CodexSessionDialogs;
   readonly turnCommit: CodexTurnCommit;
   constructor(
     record: SessionRecord,
@@ -73,7 +73,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     transcriptWatcher: CodexTranscriptWatcher | undefined,
     loopDefinitions: readonly PersistedLoopDefinition[],
     resolveConfigPath: (signal: AbortSignal) => Promise<string>,
-    dialogs: CodexWorkspaceTrustDialogs,
+    dialogs: CodexSessionDialogs,
   ) {
     super(
       "codex",
@@ -110,7 +110,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.replayFor(event as string, handler);
     return () => this.off(event, handler);
   }
-  readonly listDialogs = () => this.dialogs.discovery.list();
+  readonly listDialogs = () => this.dialogs.list();
   readonly answerDialog: CodexSessionApi["answerDialog"] = (requestId, choiceId, options) =>
     this.dialogs.answerDialog(requestId, choiceId, options);
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {

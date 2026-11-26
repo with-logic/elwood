@@ -53,6 +53,7 @@ async function openEvents() {
       facts: { agent: "claude", disclosesHooks: false },
       dialog: {
         header: "",
+        rows: [],
         options: [
           { label: "accept", style: "numbered", number: "1", selected: true },
           { label: "exit", style: "numbered", number: "2" },

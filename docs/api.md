@@ -192,6 +192,12 @@ reject with the [Claude dialog answer errors](../prd/05-api/5.3-claude-session-a
 Codex answers require a verified prompt and automatic trust off (the default). They resolve on native
 acceptance, Back, or Quit. See the [Codex answer contract](../prd/05-api/5.13-dialogs.md#codex-workspace-trust-answers).
 
+Codex sessions also list Codex's update offer as a `kind: "update"` request when
+Elwood's own skip does not answer it, for example after you type into the
+offer yourself. The request carries the native choices, plus the installed and
+offered versions when the banner names them. Answer it at the terminal. Check
+`request.kind` before reading trust fields. See [Codex update offers](../prd/05-api/5.13-dialogs.md#codex-update-offers).
+
 `sendMessage` is the adapter-neutral chat-loop operation. If the session is
 ready it writes through the PTY immediately. If the session is alive but busy,
 Elwood queues it and submits it on the next `ready` transition.

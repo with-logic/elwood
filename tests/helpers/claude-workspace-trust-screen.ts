@@ -1,7 +1,8 @@
 /**
  * Captured Claude workspace disclosures, replayed at the test's launch path: the load rows Claude
- * 2.1.326 and later add for a folder's project settings files and `.mcp.json`, and the hooks
- * warning 2.1.329 and later put before them (C-ATTN-07, C-CLAUDE-26, C-CLAUDE-29).
+ * 2.1.326 and later add for a folder's project settings files and `.mcp.json`, the hooks
+ * warning 2.1.329 and later put before them, and the permissions warning 2.1.332 puts before
+ * both (C-ATTN-07, C-CLAUDE-26, C-CLAUDE-29, C-CLAUDE-30).
  */
 import { capturedFrame } from "./captured-frames.ts";
 
@@ -27,8 +28,8 @@ export const claudeHooksPromptCaptures = (["local", "both"] as const).flatMap((f
   ),
 );
 
-/** Moves a hooks prompt's caret to "Yes": only its "No, exit" frame was captured. */
-export function selectClaudeHooksYes(screen: string): string {
+/** Moves a captured workspace prompt's caret to "Yes": only its "No, exit" frame was captured. */
+export function selectClaudeWorkspaceTrustYes(screen: string): string {
   return screen.replace(" ❯ No, exit\n   Yes", "   No, exit\n ❯ Yes");
 }
 
@@ -47,7 +48,7 @@ export function claudeWorkspaceTrustScreen(
 
 function hooksScreen(selected: "yes" | "no"): string {
   const screen = claudeHooksPrompt.wrapped;
-  return selected === "no" ? screen : selectClaudeHooksYes(screen);
+  return selected === "no" ? screen : selectClaudeWorkspaceTrustYes(screen);
 }
 
 /**
@@ -64,6 +65,28 @@ export const claudeLoadRowCaptures = (
     ["claude-2.1.332/trust/workspace-hooks-both-mcp-100", "hooks"],
     ["claude-2.1.329/trust/workspace-mcp-120", "mcp_servers"],
     ["claude-2.1.329/trust/workspace-settings-120", "settings"],
+  ] as const
+).map(([path, disclosure]) => [path, capturedFrame(path), disclosure] as const);
+
+/**
+ * Captured prompts with the permissions warning (C-CLAUDE-30), on "No, exit", and what each
+ * load row discloses: one rule, three, both settings files with the header unwrapped and
+ * wrapped, a list cut to `and <k> more`, a truncated rule, the hooks warning after it, a
+ * warning naming one of two loaded files, and an `.mcp.json` row. The 2.1.329 capture matches
+ * 2.1.332's byte for byte.
+ */
+export const claudePermissionsCaptures = (
+  [
+    ["claude-2.1.332/trust/workspace-permissions-one-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-three-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-both-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-both-100", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-many-100", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-long-100", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-hooks-120", "hooks"],
+    ["claude-2.1.332/trust/workspace-permissions-subset-120", "settings"],
+    ["claude-2.1.332/trust/workspace-permissions-mcp-120", "mcp_servers"],
+    ["claude-2.1.329/trust/workspace-permissions-one-120", "settings"],
   ] as const
 ).map(([path, disclosure]) => [path, capturedFrame(path), disclosure] as const);
 

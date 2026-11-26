@@ -1,6 +1,6 @@
 /** Coordinate Codex workspace trust answers and lifecycle events (C-ATTN-07, C-ATTN-08). */
 import { setImmediate } from "node:timers/promises";
-import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
+import type { ElwoodDialogAnswerOptions, ElwoodDialogEvent } from "../../core/dialogs/types.ts";
 import { observeDialogNotifications } from "../../core/warnings/dialogs.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
@@ -9,7 +9,7 @@ import type { CodexEventMap } from "../session/types.ts";
 import { CodexWorkspaceTrustDiscovery } from "./discovery.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import type { WorkspaceTrustFrame } from "./menu-frame.ts";
-import type { ElwoodDialogEvent, ElwoodDialogRequest } from "./types.ts";
+import type { CodexTrustDialogRequest } from "./types.ts";
 import { codexTrustWriter } from "./writer.ts";
 
 type DialogListener = (event: ElwoodDialogEvent) => unknown;
@@ -26,12 +26,12 @@ export class CodexWorkspaceTrustDialogs {
   private readonly writer: ReturnType<typeof codexTrustWriter>;
   private deliveryRevision = 0;
   private readonly emitter: TypedEmitter<CodexEventMap>;
-  private readonly observeNotifications: (deliver: () => void) => void;
+  readonly observeNotifications: (deliver: () => void) => void; // update offers deliver here too
   private readonly replays = new Set<DialogListener>();
   private pendingDeliveryCheck: PendingDeliveryCheck | undefined;
   private collecting = 0;
   private waitingForCollector = false;
-  private announced: ElwoodDialogRequest | undefined;
+  private announced: CodexTrustDialogRequest | undefined;
   private closed: ClosedDialog | undefined;
   private needsRefresh = false;
   private publishing = false;
@@ -103,7 +103,7 @@ export class CodexWorkspaceTrustDialogs {
     this.publishing = true;
     queueMicrotask(() => void this.publish().catch(this.discovery.retireUnverified));
   }
-  private retire(request: ElwoodDialogRequest, reason: ClosedDialog["reason"]): void {
+  private retire(request: CodexTrustDialogRequest, reason: ClosedDialog["reason"]): void {
     this.writer.retireNavigation(request.id);
     if (this.announced !== request) return;
     this.announced = undefined;

@@ -122,7 +122,7 @@ for (const file of settingsFiles) {
   }, async () => {
     const { project, marker } = hookedProject(file);
     await assertProbeRefuses(project, "workspace_hooks", marker);
-    await assertStillUntrusted(project, marker, true);
+    await assertStillUntrusted(project, { marker, disclosesHooks: true });
   });
 }
 
@@ -135,5 +135,5 @@ test(`C-E2E-28 listClaudeModels on Claude ${older ?? "older"} refuses a plain wo
   const { project, marker } = hookedProject();
   await assertProbeRefuses(project, "workspace_hooks", marker);
   // The older CLI shows the plain prompt for the same folder: it never discloses its hooks.
-  await assertStillUntrusted(project, marker, false);
+  await assertStillUntrusted(project, { marker, disclosesHooks: false });
 });
