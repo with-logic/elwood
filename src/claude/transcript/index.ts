@@ -98,16 +98,15 @@ export class ClaudeTranscriptWatcher {
   queuedPrompts(): QueuedPromptsAccess | undefined {
     return this.correlationActive ? this.lines.userPrompts.queuedPrompts : undefined;
   }
-
   private get correlationActive(): boolean {
     return !(this.finished || this.lines.turns.correlationDisabled);
   }
 
-  /** Reads up to `chunks` chunks. Returns whether it reached the end of every transcript. */
+  /** Reads up to `chunks` chunks. Returns whether it reached every transcript's end: a cursor
+   * stops short only when the watcher-wide budget is spent, and the next scan resumes there. */
   scan(chunks = scanChunksPerScan): boolean {
     if (this.finished) return true;
     const budget = { chunks };
-    // A cursor stops short only when the watcher-wide budget is spent; the next scan resumes there.
     const reachedEnd = [...this.cursors.values()].every((cursor) => {
       if (budget.chunks <= 0) return false;
       cursor.runInitialRetry(budget);
@@ -186,15 +185,16 @@ export class ClaudeTranscriptWatcher {
 
   // Drain a cursor in bounded chunks against the SHARED per-scan budget (sync work
   // bounded across ALL cursors); the read is contained, parse/emit run outside it.
-  /** Returns whether it read to the end, or stopped at a contained FS failure. */
   private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): boolean {
     while (budget.chunks > 0) {
       budget.chunks -= 1;
       const chunk = this.guard.read(cursor.path, () => cursor.readLiveChunk());
       if (chunk === undefined) return true; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
+      // At the end. Reading nothing new spends no budget, so idle transcripts cannot starve others.
+      else if (!chunk.canContinueNow) budget.chunks += 1;
       if (!chunk.canContinueNow) return true;
     }
-    return false; // budget exhausted with more to read: the next poll tick resumes here.
+    return false; // budget spent with more to read: the next scan resumes here
   }
 }

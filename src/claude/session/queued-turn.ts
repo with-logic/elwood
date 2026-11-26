@@ -176,7 +176,7 @@ function statusUnchangedSinceNow(session: Pick<ClaudeSessionImpl, "statusDecisio
   const latest = session.statusDecisions().at(-1);
   return (): boolean => {
     const decisions = session.statusDecisions();
-    const index = latest === undefined ? -1 : decisions.lastIndexOf(latest);
+    const index = decisions.findLastIndex((decision) => decision === latest);
     return index >= 0 && decisions.slice(index + 1).every((decision) => decision.to === undefined);
   };
 }
