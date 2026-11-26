@@ -10,11 +10,12 @@ import {
   type CodexSessionApi,
   type ElwoodDialogEvent,
   type ElwoodDialogRequest,
+  resumeCodex,
   startCodex,
 } from "../../src/index.ts";
 import { codexTty, tty } from "../fixtures/trust-composer.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
-import { installFakes, ptys, render, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, render, tempDir } from "./helpers.ts";
 
 export const offer = capturedFrame("codex-0.172.0/update/offer-standalone-100x30");
 /** The same offer for a newer release: a different offer, not a redraw. */
@@ -39,11 +40,17 @@ export async function firstListed(session: CodexSessionApi): Promise<ElwoodDialo
   return required((await session.listDialogs())[0], "a listed dialog request");
 }
 
-/** `listen: false` leaves the session without a `dialog` listener. */
-export async function openCodex({ listen = true } = {}) {
+/** `listen: false` leaves the session without a `dialog` listener; `resume` resumes one. */
+export async function openCodex({ listen = true, resume = false } = {}) {
   installFakes();
   const cwd = tempDir();
-  const session = await startCodex({ cwd, initialSize: { cols: 100, rows: 30 } });
+  const initialSize = { cols: 100, rows: 30 };
+  let session = await startCodex({ cwd, initialSize });
+  if (resume) {
+    await becomeReady(session.elwoodSessionId, cwd);
+    await session.stop();
+    session = await resumeCodex({ cwd, initialSize, elwoodSessionId: session.elwoodSessionId });
+  }
   const events: ElwoodDialogEvent[] = [];
   if (listen)
     session.on("dialog", (event) => {

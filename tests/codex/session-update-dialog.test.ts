@@ -7,6 +7,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
 import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../../src/index.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { becomeReady, render, resetFakes } from "./helpers.ts";
 import {
   closing,
@@ -127,6 +128,25 @@ test("C-ATTN-12 an earlier skip that settles while a newer one is pending keeps 
     await paint(skippedComposer);
     expect(await session.listDialogs()).toEqual([]);
     expect(events).toEqual([]);
+  });
+});
+
+test("C-ATTN-12 a resumed session lists and announces its offer, and Codex's placeholder clears it", async () => {
+  const { session, events, show } = await openCodex({ resume: true });
+  await closing(session, async () => {
+    await show(offer);
+    await session.sendKeys(down);
+    const request = await firstListed(session);
+    expect(request).toMatchObject({ kind: "update", versions: expectedOffer.versions });
+    // Codex 0.172.0 draws `Resuming session…` once a resume's offer is answered.
+    await show(capturedFrame("codex-0.172.0/update/resume-placeholder"));
+    expect(await session.listDialogs()).toEqual([]);
+    await expect
+      .poll(() => phases(events, request))
+      .toEqual([
+        ["raised", undefined, true],
+        ["closed", "cleared", true],
+      ]);
   });
 });
 

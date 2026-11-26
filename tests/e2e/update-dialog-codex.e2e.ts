@@ -70,7 +70,7 @@ test("C-E2E-33 a Codex update offer whose skip never lands is listed for the hos
       "the offer raised",
       OFFER_MS + RETRIES_MS,
     );
-    assert.ok(input.withheld.length > 0, "Elwood wrote its Skip key");
+    assert.ok(input.withheld.length > 0, "Elwood wrote no Skip key for the test to withhold");
     const [request, ...others] = await active.listDialogs();
     assert.deepEqual(others, []);
     assert.equal(events[0]?.request, request);
