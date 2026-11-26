@@ -12,12 +12,21 @@ const tierBadges = codexServiceTierChoices
   .filter((tier) => tier !== "default")
   .map((tier) => tier.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`))
   .join("|");
-const effortWithOptionalTier = `(?:${codexReasoningEfforts.join("|")}|default)(?: (?:${tierBadges}))?`;
 const directory = String.raw` · (?:~?\/|[A-Z]:[\\/])[^\n]*`;
-// An effort-only footer needs its directory; a bare effort word cannot prove configuration.
+// Groups: the model, the effort label (`default` for none), and the directory.
 const statusFooter = new RegExp(
-  String.raw`^ {2}(?:(?:gpt|GPT)-[\w.-]+(?: Terra)? ${effortWithOptionalTier}(?:${directory})?|${effortWithOptionalTier}${directory})(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
+  String.raw`^ {2}((?:gpt|GPT)-[\w.-]+(?: Terra)? )?(${codexReasoningEfforts.join("|")}|default)(?: (?:${tierBadges}))?(${directory})?(?: {2,}Plan mode \(⇧tab to cycle\))?$`,
 );
+
+/**
+ * The effort label of a status row, or undefined when `row` is not one. An effort-only row
+ * needs its directory: a bare effort word cannot prove configuration.
+ */
+function statusEffort(row: string): string | undefined {
+  const match = statusFooter.exec(row);
+  return match && (match[1] ?? match[3]) !== undefined ? match[2] : undefined;
+}
+
 // Beside a warnings badge that leaves no room, Codex drops `? for shortcuts` from the hint.
 const hintFooter = /^(?: {2})?(?:← for agents(?: · \? for shortcuts)?|\? for shortcuts)$/;
 // Native Codex right-aligns its warnings badge, and shortens it to `⚠ 3 · f2` when it does not
@@ -46,6 +55,17 @@ function rowWasCut(row: string, next: string, cols: number): boolean {
   return displayColumns(row) + 1 + displayColumns(word) > cols;
 }
 
+/** Native footer rows beneath a composer. */
+export type CodexFooter = {
+  /** A status row is among them. */
+  readonly hasStatus: boolean;
+  /**
+   * The status row's effort label. Codex labels no effort, and `none`, `default`, as it does
+   * every effort before it applies the session's configuration (C-API-28).
+   */
+  readonly effort: string | undefined;
+};
+
 /**
  * Classify the rows beneath a composer in a terminal `cols` columns wide: every row must
  * be native footer chrome. A continuation row is evidence only directly beneath a status
@@ -55,20 +75,21 @@ function rowWasCut(row: string, next: string, cols: number): boolean {
 export function classifyCodexFooter(
   rowsBelow: readonly string[],
   cols: number,
-): { readonly hasStatus: boolean } | undefined {
+): CodexFooter | undefined {
   const below = rowsBelow.map((row) => row.replace(trailingBadges, "").trimEnd());
-  let hasStatus = false;
+  let effort: string | undefined;
   // The status row, or continuation, that the current row would continue.
   let open: string | undefined;
   for (const row of below) {
+    const rowEffort = statusEffort(row);
     const hasContinuationShape = continuation.test(row) && !unknownBadge.test(row);
     const continuesOpenRow =
       open !== undefined && hasContinuationShape && rowWasCut(open, row, cols);
     if (row === "") {
       // A blank row ends any wrapped footer: a continuation sits directly beneath its row.
       open = undefined;
-    } else if (statusFooter.test(row)) {
-      hasStatus = true;
+    } else if (rowEffort !== undefined) {
+      effort = rowEffort;
       open = row;
     } else if (hintFooter.test(row)) {
       open = undefined;
@@ -78,5 +99,5 @@ export function classifyCodexFooter(
       return undefined;
     }
   }
-  return { hasStatus };
+  return { hasStatus: effort !== undefined, effort };
 }
