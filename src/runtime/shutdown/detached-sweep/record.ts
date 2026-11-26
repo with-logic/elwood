@@ -15,6 +15,7 @@ import {
   refuseLeaderObservation,
 } from "./leader-observation.ts";
 import { ResumeDebt } from "./resume-debt.ts";
+import { unvouchedAmbiguousGroups } from "./vouching.ts";
 
 /** Recorded graceful-shutdown processes, by pid and start time. */
 export class DescendantRecord {
@@ -104,18 +105,15 @@ export class DescendantRecord {
     this.unknownLeaderGroup = leaderPid;
   }
 
-  /** Ambiguous identities and unattributable original-group members cannot authorize cleanup. */
+  /** Groups unsafe to signal: unvouched ambiguous members, or an unattributable leader group. */
   unsafeSurvivorGroups(table: readonly ProcessEntry[]): ReadonlySet<number> {
     if (this.leaderGroup !== undefined) {
       const members = table.filter((row) => !row.zombie && row.pgid === this.leaderGroup);
       if (members.length > 0 && !members.some((row) => this.identities.has(identity(row))))
         this.unknownLeaderGroup = this.leaderGroup;
     }
-    const unsafe = new Set(
-      this.survivors(table)
-        .filter((row) => this.ambiguous.has(identity(row)))
-        .map((row) => row.pgid),
-    );
+    const isAmbiguous = (row: ProcessEntry) => this.ambiguous.has(identity(row));
+    const unsafe = unvouchedAmbiguousGroups(this.survivors(table), isAmbiguous);
     if (this.unknownLeaderGroup !== undefined) unsafe.add(this.unknownLeaderGroup);
     return unsafe;
   }
