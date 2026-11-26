@@ -24,6 +24,16 @@ export const questionCodexBinary = join(homedir(), ".local/bin/codex");
 export const questionCodexVersion = "codex-cli 0.172.0";
 export const questionCodexModel = "gpt-6-luna";
 
+/** The status footer row the sandbox's `status_line` draws, lowercased, such as `gpt-6-luna low`. */
+export function codexFooterRow(screen: string): string | undefined {
+  const prefix = `  ${questionCodexModel} `;
+  return screen
+    .split("\n")
+    .find((line) => line.toLowerCase().startsWith(prefix))
+    ?.trim()
+    .toLowerCase();
+}
+
 /** Capture coordinates and the PTY viewport must describe the same native layout. */
 export const nativeQuestionSize = { cols: 140, rows: 45 } as const;
 

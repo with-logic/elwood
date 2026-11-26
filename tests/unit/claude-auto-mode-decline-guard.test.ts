@@ -6,10 +6,8 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeAutoModeOfferDecliner } from "../../src/claude/auto-mode/decline.ts";
-import {
-  ClaudeStartupPromptResponder,
-  guardedClaudeAutomationWrite,
-} from "../../src/claude/startup-prompts.ts";
+import { guardedClaudeAutomationWrite } from "../../src/claude/session/prompt-writers.ts";
+import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 
 afterEach(() => {

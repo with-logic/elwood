@@ -1,6 +1,11 @@
 /** Report one content-free dialog observer failure per live session (PRD §5.4). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { createOnceWhileLiveReporter, type SessionWarningEmitter } from "./session.ts";
+import type { ElwoodWarningEvent } from "../types.ts";
+import {
+  createOnceWhileLiveReporter,
+  emitSessionWarningsWithRejectionHandling,
+  type SessionWarningEmitter,
+} from "./session.ts";
 
 export type DialogObserverFailedWarning = {
   readonly elwoodSessionId: string;
@@ -25,8 +30,13 @@ export function observeDialogNotifications(
   session: { readonly elwoodSessionId: string; readonly agent: ElwoodAgentKind },
   isLive: () => boolean,
 ): (deliver: () => void) => void {
-  // Deliver diagnostics outside the dialog observer scope.
-  const report = createOnceWhileLiveReporter(emitter, isLive, () =>
+  // Deliver diagnostics outside the dialog observer scope. No caller listener exists before
+  // start returns, so this failure is always live and needs no startup gate.
+  const sink = {
+    emitWarnings: (warnings: readonly ElwoodWarningEvent[]) =>
+      emitSessionWarningsWithRejectionHandling(warnings, emitter),
+  };
+  const report = createOnceWhileLiveReporter(sink, isLive, () =>
     Object.freeze({
       elwoodSessionId: session.elwoodSessionId,
       agent: session.agent,

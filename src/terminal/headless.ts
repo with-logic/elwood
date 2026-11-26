@@ -2,9 +2,9 @@
 import xtermHeadless from "@xterm/headless";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyProcess } from "../pty/types.ts";
-import { RenderCursor } from "./cursor.ts";
 import { observedInputWriter } from "./forwarded-input.ts";
 import { PtyOutput } from "./pty-output.ts";
+import { RenderCursor } from "./render-cursor.ts";
 import { reportRenderFailed } from "./render-failure.ts";
 import { RenderQueue } from "./render-queue.ts";
 import { retainFinalScreen } from "./screen.ts";

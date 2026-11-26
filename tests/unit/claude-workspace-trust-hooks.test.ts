@@ -7,7 +7,7 @@
  */
 import { expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
-import { claudeWorkspaceDisclosesHooks } from "../../src/core/trust/copy.ts";
+import { claudeWorkspaceDisclosesHooks } from "../../src/core/trust/copy/claude-workspace.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import { autotrustAnswer } from "../helpers/claude-autotrust.ts";

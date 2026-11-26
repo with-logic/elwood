@@ -6,7 +6,7 @@
 import {
   type ClaudeWorkspaceDisclosure,
   claudeWorkspaceStrongestDisclosure,
-} from "../core/trust/copy.ts";
+} from "../core/trust/copy/claude-workspace.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "../core/trust/prompts.ts";
 import type { TrustView } from "../core/trust/view.ts";
 

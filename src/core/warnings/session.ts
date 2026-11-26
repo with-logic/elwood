@@ -21,6 +21,11 @@ export type WarningEmit = {
   readonly activity: (event: ElwoodActivityEvent) => void;
 };
 
+/** A session's warning sink: emits a batch, each as `warning` + `activity`. */
+export type SessionWarningSink = {
+  readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
+};
+
 export type SessionWarningEmitter = {
   readonly emit: ((name: "warning", event: ElwoodWarningEvent, containRejections: true) => void) &
     ((name: "activity", event: ElwoodActivityEvent, containRejections: true) => void);
@@ -55,12 +60,14 @@ export function emitSessionWarnings(
 }
 
 /**
- * Report a content-free observer failure once per session. Delivery waits for a microtask,
- * outside the failed notification, ends once the session closes, and contains failures of
- * the diagnostic's own listeners so they never recursively warn.
+ * Report a content-free observer failure once per session, through `sink`. Delivery waits
+ * for a microtask, outside the failed notification, ends once the session closes, and
+ * contains failures of the diagnostic's own listeners so they never recursively warn. A
+ * session's startup warning gate as `sink` holds a failure observed before start returns
+ * until after it returns (C-API-14).
  */
 export function createOnceWhileLiveReporter(
-  emitter: SessionWarningEmitter,
+  sink: SessionWarningSink,
   isLive: () => boolean,
   warning: () => ElwoodWarningEvent,
 ): () => void {
@@ -70,7 +77,7 @@ export function createOnceWhileLiveReporter(
     reported = true;
     queueMicrotask(() => {
       if (!isLive()) return;
-      runContained(() => emitSessionWarningsWithRejectionHandling([warning()], emitter));
+      runContained(() => sink.emitWarnings([warning()]));
     });
   };
 }

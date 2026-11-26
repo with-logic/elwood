@@ -12,14 +12,23 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A `frame_observer_failed` warning for a frame Elwood observed while a session was
+  still starting now reaches a `warning` listener attached once `startClaude()`,
+  `startCodex()` or a resume returns, as other startup warnings do. Before, Elwood
+  emitted it before the caller could subscribe, so no listener saw it.
+
 - A Codex session that requests a `reasoningEffort` other than `none` now reaches
   `ready` only once Codex's status footer shows an effort label other than `default`.
   Codex 0.172 paints the footer seconds before it applies the session's configuration,
   and applying it discards a Plan mode or model picked before it, so a `/plan` or
   `setModel` right after `ready` could be lost. If the label never appears, readiness
-  counts the footer at the 60-second backstop and emits a new `codex_effort_unconfirmed`
-  warning. With no `reasoningEffort`, or `none`, `ready` can still come first, including
-  when the effort comes from `configOverrides`, a profile or config.toml.
+  counts the footer 50 seconds after launch, never before the deadline, and emits a new
+  `codex_effort_unconfirmed` warning, so a host waiting for `ready` with
+  `waitForStatus`'s default 60-second timeout gets `ready` rather than `wait_timeout`
+  when Codex drew its first frame within 40 seconds and no blocking startup dialog holds
+  readiness. With no `reasoningEffort`, or
+  `none`, `ready` can still come first, including when the effort comes from
+  `configOverrides`, a profile or config.toml.
 
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed

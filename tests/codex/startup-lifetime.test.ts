@@ -2,6 +2,7 @@
 import { setImmediate } from "node:timers/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import * as startupFrame from "../../src/core/startup/frame.ts";
+import type { SessionWarningSink } from "../../src/core/warnings/session.ts";
 import { startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import * as terminal from "../../src/terminal/headless.ts";
@@ -94,7 +95,7 @@ test("C-CODEX-12 disposal drops a write-failure warning while startup delivery i
 
 test("C-CODEX-12 reentrant stop suppresses later update failures but preserves trust diagnostics", async () => {
   installFakes();
-  let deliver: startupFrame.FrameWarningSink["emitWarnings"] = () => {};
+  let deliver: SessionWarningSink["emitWarnings"] = () => {};
   const createGate = startupFrame.createStartupWarningGate;
   vi.spyOn(startupFrame, "createStartupWarningGate").mockImplementation((sink) => {
     deliver = sink.emitWarnings;
