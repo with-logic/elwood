@@ -5,11 +5,11 @@ import {
   cachedLiveSnapshot,
   captureRenderProgress,
   hasUnknownOrNonPristineOutput,
-  RenderCursor,
   settledLiveSnapshot,
   subscribeRender,
 } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
+import { RenderCursor } from "../../src/terminal/render-cursor.ts";
 
 test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on output and resize", async () => {
   const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, () => undefined);
