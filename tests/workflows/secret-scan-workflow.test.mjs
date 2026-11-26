@@ -6,14 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
-import {
-  commit,
-  dockerWithFinding,
-  git,
-  rangeScript,
-  scanScript,
-  workflow,
-} from "./secret-scan-fixture.mjs";
+import { commit, git } from "./git-fixture.mjs";
+import { dockerWithFinding, rangeScript, scanScript, workflow } from "./secret-scan-fixture.mjs";
 
 const scratch = mkdtempSync(join(tmpdir(), "elwood-secret-scan-"));
 const seed = join(scratch, "seed");
