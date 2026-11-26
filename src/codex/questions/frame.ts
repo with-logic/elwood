@@ -10,6 +10,7 @@ import {
   queuedPanelHeader,
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
+import { workingRowToPanel } from "./pending-messages.ts";
 import { nativeSelection } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
@@ -135,7 +136,7 @@ function questionCursor(
     frame.cursorX > 0 &&
     frame.cursorX <= row.length &&
     codexWorkingScreen.test(row) &&
-    lines.slice(frame.cursorRow + 1, start).every((line) => !line.trim())
+    workingRowToPanel(lines.slice(frame.cursorRow + 1, start))
   );
 }
 /** Correlate the prompt and complete ordered native options with a known definition. */
