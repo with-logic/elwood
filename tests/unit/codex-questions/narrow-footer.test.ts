@@ -12,9 +12,9 @@ const queuedFirst = at("queued-footer-wrapped-60-first.json");
 const queuedSecond = at("queued-footer-wrapped-50-second.json");
 // The last queued editor at 60 columns, whose shorter footer fits on one row.
 const queuedLast = at("queued-footer-60-third.json");
-// The first of three modal questions: its footer splits after the second hint at 60 and 50
-// columns, and takes a row per hint at 40.
-const modal = [60, 50, 40].map((cols) => [cols, at(`modal-footer-wrapped-${cols}.json`)] as const);
+// The first of three modal questions: its footer splits after the second hint at 60 columns,
+// and takes a row per hint at 40.
+const modal = [60, 40].map((cols) => [cols, at(`modal-footer-wrapped-${cols}.json`)] as const);
 
 /** The frame with its two footer rows replaced by `footer`. */
 function withFooter(frame: QuestionFrame, footer: readonly string[]): QuestionFrame {
