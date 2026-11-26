@@ -21,11 +21,11 @@ import { spawnCodexPty } from "../pty.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
-import { CodexWorkspaceTrustDialogs } from "../workspace-trust/dialogs.ts";
 import { trackWorkspacePreludeInput } from "../workspace-trust/prelude-input.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import type { BuildCodexSessionInput } from "./build-input.ts";
 import { reportCallerInput } from "./caller-input.ts";
+import { CodexSessionDialogs } from "./dialogs.ts";
 import { codexFrameObservers } from "./frame-observers.ts";
 import { buildCodexHookErrorHandler, dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
@@ -76,7 +76,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const prelude = trackWorkspacePreludeInput(() => terminal);
   const send = (keys: string): Promise<void> =>
     withAutomatedInput(terminal, () => callerInput.automation(keys));
-  const dialogs: CodexWorkspaceTrustDialogs = new CodexWorkspaceTrustDialogs({
+  const dialogs: CodexSessionDialogs = new CodexSessionDialogs({
     elwoodSessionId,
     evidence: launched.trustEvidence,
     terminal: () => terminal,
@@ -91,7 +91,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const onReady = () => {
-    dialogs.discovery.endStartup();
+    dialogs.endStartup();
     prelude.end();
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
@@ -110,17 +110,17 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const promptResponder = new CodexStartupPromptResponder(
     record.elwoodSessionId,
     autotrust,
-    () => dialogs.reconcileAfter(frameObserver.refresh),
+    () => dialogs.trust.reconcileAfter(frameObserver.refresh),
     clearance,
     () => activeSession.inputBlocking || activeSession.automationInputBlocking,
-    { prelude, onTakeover: dialogs.refreshAfterWorkspaceTrustTakeover },
+    { prelude, onTakeover: dialogs.trust.refreshAfterWorkspaceTrustTakeover },
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
     pty,
     (data, rendered) => {
       // A ready listener can write raw keys, which would revoke an unrecorded answer.
-      dialogs.recordConfirmation();
+      dialogs.trust.recordConfirmation();
       terminalReplay.push(data);
       const { text, cols } = readiness.observeStartupFrame(rendered);
       const frame = { text, cols, title: rendered.title };
@@ -132,7 +132,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       const result = promptResponder.handle(frame.text, send, read, guard, trustRead);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartup(emitter, "codex", record.elwoodSessionId, result.outcomes, warnGate);
-      dialogs.reconcileAfter(() => frameObserver.observe(frame));
+      dialogs.trust.reconcileAfter(() => frameObserver.observe(frame));
+      dialogs.update.observe(result.outcomes);
       emitUpdateAttention(emitter, record.elwoodSessionId, result.updateGeneration);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
@@ -167,7 +168,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;
-        dialogs.nativeExit(exit);
+        dialogs.trust.nativeExit(exit);
         activeSession.beginExitFinalization();
         activeSession.closing.abort();
         const emitExit = () => {

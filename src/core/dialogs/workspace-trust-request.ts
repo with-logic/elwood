@@ -1,7 +1,7 @@
 /** Shared workspace trust menu identity and request snapshots (PRD §5.13, C-ATTN-07). */
 import { randomUUID } from "node:crypto";
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import type { ElwoodDialogRequest, WorkspaceTrustTarget } from "./types.ts";
+import type { ElwoodTrustDialogRequest, WorkspaceTrustTarget } from "./types.ts";
 
 export type WorkspaceTrustMenu = {
   readonly target: WorkspaceTrustTarget;
@@ -24,7 +24,7 @@ export function createWorkspaceTrustRequest<Agent extends ElwoodAgentKind>(
   agent: Agent,
   elwoodSessionId: string,
   { target, dialog }: WorkspaceTrustMenu,
-): ElwoodDialogRequest<Agent> {
+): ElwoodTrustDialogRequest<Agent> {
   return Object.freeze({
     id: randomUUID(),
     elwoodSessionId,

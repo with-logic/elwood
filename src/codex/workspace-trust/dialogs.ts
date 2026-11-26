@@ -26,7 +26,7 @@ export class CodexWorkspaceTrustDialogs {
   private readonly writer: ReturnType<typeof codexTrustWriter>;
   private deliveryRevision = 0;
   private readonly emitter: TypedEmitter<CodexEventMap>;
-  private readonly observeNotifications: (deliver: () => void) => void;
+  readonly observeNotifications: (deliver: () => void) => void; // every session dialog delivery
   private readonly replays = new Set<DialogListener>();
   private pendingDeliveryCheck: PendingDeliveryCheck | undefined;
   private collecting = 0;

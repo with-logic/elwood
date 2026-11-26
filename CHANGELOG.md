@@ -12,6 +12,17 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Codex sessions list and announce Codex's update offer as a `kind: "update"`
+  dialog when Elwood's own skip does not answer it: after raw caller input
+  takes the offer over, after the skip's retries end with the offer still on
+  screen, or when the offer has no safe choice. The request carries the banner
+  text, the installed and offered versions, and the native choices. `dialog`
+  events close it with `cleared` when Codex's composer replaces it. Hosts answer
+  it at the terminal for now. Claude has no update screen, so Claude sessions
+  never report one. **Breaking for TypeScript hosts:** `ElwoodDialogRequest` is
+  now a union discriminated by `kind`; check `kind === "trust"` before reading
+  `targetPath` or `targetScope`. `ElwoodTrustDialogRequest` and
+  `ElwoodUpdateDialogRequest` are exported.
 - Claude guidance sent during a running turn now produces its `user_message`
   activity. Claude Code 2.1.332 fires the guidance's `UserPromptSubmit` with the
   running turn's prompt ID, which Elwood had treated as a duplicate. That
