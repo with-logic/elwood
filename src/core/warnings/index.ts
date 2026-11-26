@@ -49,6 +49,7 @@ export type ElwoodWarningEvent =
   | lifecycle.TurnCommitWaitExpiredWarning
   | lifecycle.InitialReadinessWarning
   | lifecycle.FrameObserverFailedWarning
+  | lifecycle.ClaudeQueuedTurnUnconfirmedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";
@@ -100,10 +101,9 @@ export type ElwoodWarningEvent =
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
       readonly message: string;
-      // Why data was lost, bounded to a fixed token: an unparseable committed record,
-      // an over-length record discarded through its next newline, or an unread
-      // teardown backlog. Live-only and count-free; drops are coalesced to at most
-      // one warning per (path, cause) per scan pass, not one per record.
+      // Why data was lost, as a fixed token: an unparseable committed record, an over-length
+      // record discarded through its next newline, or an unread teardown backlog. Live-only and
+      // count-free, coalesced to at most one warning per (path, cause) per scan pass.
       readonly cause: DropCause;
       readonly transcriptPath: string;
       readonly raw: string;
