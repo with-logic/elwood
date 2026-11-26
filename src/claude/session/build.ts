@@ -7,23 +7,23 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { stagedInputPending, withAutomatedInput } from "../../runtime/session/session-input.ts";
+import { stagedInputPending } from "../../runtime/session/session-input.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
 import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
-import { settledLiveSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { liveClaudeAttentionClearance, liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
-import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
+import { ClaudeStartupPromptResponder } from "../startup-prompts.ts";
 import { claudeStartupSize } from "../startup-size.ts";
 import { ClaudeWorkspaceTrustEvents } from "../workspace-trust/events.ts";
 import { startClaudeHookBridge } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
+import { answerClaudeFramePrompts } from "./prompt-writers.ts";
 import { createClaudeReadinessGate } from "./readiness.ts";
 import {
   type BuildClaudeSessionInput,
@@ -127,18 +127,8 @@ export async function buildClaudeSession(
     terminalReplay.push(data);
     const snapshot = readiness.observeStartupFrame(renderedTerminal);
     latestRenderedText = snapshot.text;
-    const send = (input: string) =>
-      withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
     const read = () => latestRenderedText;
-    const guarded = guardedClaudeAutomationWrite(
-      renderedTerminal,
-      send,
-      read,
-      () => promptResponder.closing,
-      promptResponder.closingSignal,
-    );
-    const readSettled = () => settledLiveSnapshot(renderedTerminal)?.text;
-    const autos = promptResponder.handle(snapshot.text, send, read, guarded, readSettled);
+    const autos = answerClaudeFramePrompts(promptResponder, renderedTerminal, snapshot.text, read);
     dialogs.reconcile();
     emitSettledStartupOutcomes(emitter, "claude", elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
