@@ -3654,8 +3654,9 @@ row as the model and effort alone (`  GPT-6-Luna medium`). It draws `Plan mode (
 cycle)` on the hint row instead, right-aligned in front of the warnings badge and joined
 to it with ` · `. At 60 columns and below it shortens the badge to `Plan mode`, and the
 warnings badge shortens as before (`⚠ 3 · f2` at 50 and 40). At 80 columns and below the
-hint is `← for agents` alone. Earlier releases put the suffix at the end of the status
-row. Footer grammar that refuses the new row leaves a Plan-mode turn unsettled: the session
+hint is `← for agents` alone. After a Plan-mode turn in a direct 140-column launch, one
+capture had the long form and another the short one. Earlier releases put the suffix at
+the end of the status row. Footer grammar that refuses the new row leaves a Plan-mode turn unsettled: the session
 reaches `ready`, but the idle composer that a `send()` needs at its native end never
 matches, so `send()` timed out after 90 s. The captures are
 `tests/fixtures/codex-footer-captures-172.ts`. The warnings badge is still on every

@@ -13,8 +13,8 @@ const verdict = (frame: string, cols: number) => [
 ];
 
 test.each(
-  codexPlanModeFooters172.map((capture) => [capture.cols, capture] as const),
-)("C-CODEX-26 reads the Plan-mode footer Codex 0.172 drew at %i columns", (_, { cols, rows }) => {
+  codexPlanModeFooters172.map(({ shape, cols, rows }) => [shape, cols, rows] as const),
+)("C-CODEX-26 reads the Plan-mode footer Codex 0.172 drew %s at %i columns", (_, cols, rows) => {
   expect(verdict(screen(rows), cols)).toEqual([true, true]);
 });
 
