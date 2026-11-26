@@ -6,77 +6,35 @@
  * folder stays untrusted, and tears the probe down.
  */
 
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { claudeHooksDisclosureVersion } from "../../src/claude/preflight.ts";
-import { ElwoodError, listClaudeModels } from "../../src/index.ts";
-import { type CommandRunner, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import {
-  resetAutoupdateForTests,
-  setUpdateCoordinatorForTests,
-} from "../../src/runtime/update/once.ts";
+import { ElwoodError } from "../../src/index.ts";
+import type { CommandRunner } from "../../src/runtime/seams.ts";
 import { claudeWorkspaceTrustScreen } from "../helpers/claude-workspace-trust-screen.ts";
-import { asScreen, until } from "../helpers/model-pickers.ts";
-import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
+import { until } from "../helpers/model-pickers.ts";
+import { resetFakes } from "./helpers.ts";
+import {
+  type ProbeShown,
+  probeEnd,
+  probeShown as probeShownScreen,
+  refused,
+  reporting,
+} from "./probe-trust-helpers.ts";
 
 afterEach(resetFakes);
 
-/** A fake Claude that reports `version`. */
-const reporting =
-  (version: string): CommandRunner =>
-  () => ({ status: 0, stdout: `${version}\n`, stderr: "" });
-
-/** Starts the probe on a fake Claude, `version` or a runner, and shows it `prompt`'s variant. */
-async function probeShown(
+/** Starts the probe on a fake Claude and shows it the plain or hooks workspace prompt. */
+const probeShown = (
   version: string | CommandRunner,
   prompt: "plain" | "hooks",
   autoupdate = false,
-) {
-  const cwd = tempDir();
-  const stateDir = join(cwd, "state");
-  installFakes();
-  if (autoupdate) {
-    resetAutoupdateForTests();
-    // In process: a unit test never takes the host's real update lease.
-    setUpdateCoordinatorForTests((_adapter, update) => update());
-  }
-  setCommandRunnerForTests(typeof version === "string" ? reporting(version) : version);
-  const listing = listClaudeModels({ cwd, stateDir, autoupdate });
-  await until(() => ptys.length === 1);
-  const pty = ptys[0]!;
-  pty.emitData(asScreen(claudeWorkspaceTrustScreen(cwd, "no", prompt)));
-  return { listing, pty, stateDir };
-}
-
-/** How the probe ended: its rejection, what it wrote, and what it left running or on disk. */
-async function probeEnd({ listing, pty, stateDir }: Awaited<ReturnType<typeof probeShown>>) {
-  const error = await listing.then(
-    () => undefined,
-    (rejection: unknown) => rejection,
-  );
-  return {
-    error,
-    writes: pty.writes,
-    reaped: reapedGroups.includes(pty.pid),
-    state: readdirSync(stateDir),
-  };
-}
-
-/** Rejected with `reason`, nothing answered, and no process or state left behind. */
-const refused = (reason: RegExp) => ({
-  error: expect.objectContaining({
-    code: "claude_start_failed",
-    message: expect.stringMatching(reason),
-    details: { category: "workspace_hooks" },
-  }),
-  writes: [],
-  reaped: true,
-  state: [],
-});
+) =>
+  probeShownScreen(version, (cwd) => claudeWorkspaceTrustScreen(cwd, "no", prompt), {
+    autoupdate,
+  });
 
 /** The probe's first write, then whether it ended in the hooks refusal once the PTY exits. */
-async function answered({ listing, pty }: Awaited<ReturnType<typeof probeShown>>) {
+async function answered({ listing, pty }: ProbeShown) {
   await until(() => pty.writes.length > 0);
   const first = pty.writes[0];
   // The listing then waits for readiness; ending the probe here is enough.
@@ -107,7 +65,9 @@ test.each([
   ["unparseable", "Claude Code (dev build)"],
 ])("C-CLAUDE-26 the probe refuses a plain prompt from a Claude whose version is %s", async (_, version) => {
   const end = await probeEnd(await probeShown(version, "plain"));
-  expect(end).toEqual(refused(/cannot say whether this folder has hooks/));
+  expect(end).toEqual(
+    refused(/shows a workspace trust prompt that cannot say whether this folder has hooks/),
+  );
 });
 
 test("C-CLAUDE-26 the probe answers a plain prompt from a Claude that discloses hooks", async () => {

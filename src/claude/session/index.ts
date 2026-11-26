@@ -29,7 +29,7 @@ import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeCanDiscloseHooks, preflightClaude } from "../preflight.ts";
-import type { ProbeTrustRefusal, ProbeWorkspaceTrust } from "../probe-trust.ts";
+import type { ProbeTrustOptions, ProbeTrustRefusal } from "../probe-trust.ts";
 import {
   type ClaudeLaunchTrustEvidence,
   captureClaudeStartupTrustEvidence,
@@ -98,7 +98,7 @@ export async function startClaudeWithId(
   const probeTrust =
     onProbeTrustRefused &&
     (await recheckLaunchDirectoryOnFailure(directory, () =>
-      probeWorkspaceTrust(probeDirectory, onProbeTrustRefused),
+      probeTrustOptions(probeDirectory, onProbeTrustRefused),
     ));
   const workspaceTrustEvidence = await captureClaudeStartupTrustEvidence(directory);
   const session = await recheckLaunchDirectoryOnFailure(directory, () => {
@@ -122,10 +122,10 @@ export async function startClaudeWithId(
   return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
 
-async function probeWorkspaceTrust(
+async function probeTrustOptions(
   directory: ProbeDirectory,
   onRefused: (reason: ProbeTrustRefusal) => void,
-): Promise<ProbeWorkspaceTrust> {
+): Promise<ProbeTrustOptions> {
   return { canDiscloseHooks: await claudeCanDiscloseHooks(directory), onRefused };
 }
 

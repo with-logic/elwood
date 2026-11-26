@@ -551,7 +551,9 @@ immediate; both are safe after the process has already exited.
   per-agent posture is a usage error rather than a silent override.
 - `autotrust` changes the security posture of the launched agent. Point it only
   at directories you already trust. The standalone `listClaudeModels` /
-  `listCodexModels` probes always start with `autotrust: true`.
+  `listCodexModels` probes always start with `autotrust: true`;
+  `listClaudeModels` still refuses any prompt whose answer could run the folder's
+  code (see [docs/api.md](docs/api.md)).
 - The persisted session record holds schema version, `elwoodSessionId`,
   adapter, `cwd`, and per-adapter resume state. Loop definitions are the only
   persisted prompt text, in an owner-only `0600` sidecar.
