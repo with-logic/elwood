@@ -79,7 +79,7 @@ test("C-HOOK-24 an incomplete UTF-8 tail, a partial record, or an oversized one 
   const euro = Buffer.from("€");
   appendFileSync(path, `${JSON.stringify(assistant("whole"))}\n`);
   appendFileSync(path, euro.subarray(0, 2));
-  expect(watcher.scanPath(path, 1)).toBe(false); // the code point's last byte is unwritten
+  expect(watcher.scanPath(path, 4)).toBe(false); // the code point's last byte is unwritten
   appendFileSync(path, Buffer.concat([euro.subarray(2), Buffer.from(`\n${record.slice(0, 10)}`)]));
   expect(watcher.scanPath(path, 1)).toBe(false); // a record without its newline yet
   appendFileSync(path, `${record.slice(10)}\n`);
