@@ -1,10 +1,14 @@
 /**
- * Messages queued during a running Claude turn (PRD §5.4, C-API-62). Claude fires a queued
- * message's `UserPromptSubmit` with the running turn's prompt ID. When an interrupt cancels that
- * screening, Claude fires it again under a new prompt ID as it runs the message as its own turn.
+ * Messages queued during a running Claude turn (PRD §5.4, C-API-62; §6.5, C-HOOK-24). Claude fires
+ * a queued message's `UserPromptSubmit` with the running turn's prompt ID. When an interrupt cancels
+ * that screening, Claude fires it again under a new prompt ID as it runs the message as its own turn.
  * A queued message stays pending until that second hook claims it or the transcript shows its
- * delivery: a `remove` queue operation inside the turn, or a `queued` user record as a new turn,
- * which Claude writes only after the second hook. Entries are prompt text digests.
+ * delivery: a `remove` queue operation inside the turn, or a `queued` user record as Claude starts
+ * a new turn for it, with or without a second hook. Entries are prompt text digests at increasing
+ * positions, so a `Stop` holds only for messages queued since the previous `Stop`, and forgets only
+ * those queued before it. A message the caller's handler blocked stays claimable by a second hook,
+ * but Claude never runs it, so it holds no `Stop`. Live `dequeue` records are counted, pending or
+ * not, so a `Stop` can tell that Claude started a queued turn.
  */
 import { isRecord } from "../../core/predicates.ts";
 import { textDigest } from "./prompt-keys.ts";
@@ -13,20 +17,80 @@ import { userPromptRecord } from "./user-record.ts";
 /** At most this many queued messages stay pending (PRD §5.4). */
 const maxQueuedPrompts = 64;
 
+/** The positions a `Stop` may hold for: from the previous `Stop` up to this one. */
+export type QueuedPromptsWindow = { readonly from: number; readonly to: number };
+
+/** What a `Stop` and the hook handler read and change while Claude may start a queued turn. */
+export type QueuedPromptsView = Pick<
+  ClaudeQueuedPrompts,
+  "dequeueCount" | "nextPosition" | "stopWindow" | "hasPendingIn" | "forgetBefore" | "block"
+>;
+
+type Pending = { readonly digest: string; readonly position: number; readonly blocked: boolean };
+
 export class ClaudeQueuedPrompts {
-  private readonly pending: string[] = [];
+  private readonly pending: Pending[] = [];
+  private positions = 0;
+  private lastStop = 0;
+  private dequeued = 0;
 
   get isEmpty(): boolean {
     return this.pending.length === 0;
   }
 
+  /** How many live `dequeue` records Claude wrote as it started turns for queued messages. */
+  get dequeueCount(): number {
+    return this.dequeued;
+  }
+
+  /** The position the next queued message takes. */
+  get nextPosition(): number {
+    return this.positions;
+  }
+
+  /** Called once per `Stop`: the window of messages queued since the previous `Stop`. */
+  stopWindow(): QueuedPromptsWindow {
+    const window = { from: this.lastStop, to: this.positions };
+    this.lastStop = window.to;
+    return window;
+  }
+
+  /** Whether a message in the window that Claude may still run is pending. */
+  hasPendingIn(window: QueuedPromptsWindow): boolean {
+    return this.pending.some(
+      (entry) => !entry.blocked && entry.position >= window.from && entry.position < window.to,
+    );
+  }
+
+  forgetBefore(position: number): void {
+    while ((this.pending[0]?.position ?? position) < position) this.pending.shift();
+  }
+
+  /** The caller's handler blocked this prompt's `UserPromptSubmit`, which queued it here if anywhere. */
+  block(position: number | undefined, prompt: string): void {
+    const digest = textDigest(prompt);
+    const index = this.pending.findIndex(
+      (entry) => entry.position === position && entry.digest === digest,
+    );
+    const entry = this.pending[index];
+    if (entry) this.pending[index] = { ...entry, blocked: true };
+  }
+
   queued(digest: string): void {
-    this.pending.push(digest);
+    this.pending.push({ digest, position: this.positions++, blocked: false });
     if (this.pending.length > maxQueuedPrompts) this.pending.shift();
   }
 
-  observeRecord(item: unknown): void {
-    if (this.isEmpty || !isRecord(item)) return;
+  /** Only a live record of the main transcript can show Claude starting a queued turn here. */
+  observeRecord(item: unknown, liveMainConversation: boolean): void {
+    if (!isRecord(item)) return;
+    if (
+      liveMainConversation &&
+      item["type"] === "queue-operation" &&
+      item["operation"] === "dequeue"
+    )
+      this.dequeued += 1;
+    if (this.isEmpty) return;
     const delivered =
       item["type"] === "queue-operation"
         ? item["operation"] === "remove" && item["content"]
@@ -40,7 +104,7 @@ export class ClaudeQueuedPrompts {
 
   /** Whether a message with this text digest is pending, which this claims. */
   claim(digest: string): boolean {
-    const index = this.pending.indexOf(digest);
+    const index = this.pending.findIndex((entry) => entry.digest === digest);
     if (index >= 0) this.pending.splice(index, 1);
     return index >= 0;
   }

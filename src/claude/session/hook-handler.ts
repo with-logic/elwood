@@ -1,11 +1,10 @@
 /**
- * The Claude hook-bridge message and error handlers that `build.ts` hands
- * to the bridge factory. Implements PRD §5.2, §5.3, §5.4, §6, and §8:
- * normalize each hook, emit its `hook`/`activity` events, run the caller's hook
- * with a bounded timeout, and drive readiness/turn state — initial readiness on
- * `InstructionsLoaded` (C-API-28), turn-end on an unblocked `Stop` (C-CLAUDE-15).
+ * The Claude hook-bridge message and error handlers that `build.ts` hands to the bridge factory.
+ * Implements PRD §5.2, §5.3, §5.4, §6, and §8: normalize each hook, emit its `hook`/`activity`
+ * events, run the caller's hook with a bounded timeout, and drive readiness/turn state — initial
+ * readiness on `InstructionsLoaded` (C-API-28), turn-end on an unblocked `Stop` (C-CLAUDE-15)
+ * unless Claude is about to run queued messages as a new turn (C-HOOK-24).
  */
-
 import type { BridgeProcessResult } from "../../bridge/types.ts";
 import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
@@ -26,6 +25,7 @@ import { serializeHookResult } from "../serialize.ts";
 import type { ClaudeTranscriptWatcher } from "../transcript/index.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 import { associateClaudePrompt } from "./prompt-activity.ts";
+import { endTurnUnlessQueued } from "./queued-turn.ts";
 
 /** The live pieces the Claude hook handler drives; `session`/`turnWatcher` are read
  * lazily because both are assigned after the bridge is constructed. */
@@ -33,7 +33,10 @@ export type ClaudeHookHandlerDeps = {
   readonly record: SessionRecord;
   readonly options: StartClaudeOptions;
   readonly emitter: TypedEmitter<ClaudeEventMap>;
-  readonly transcriptWatcher: Pick<ClaudeTranscriptWatcher, "scan" | "observeUserPromptHook">;
+  readonly transcriptWatcher: Pick<
+    ClaudeTranscriptWatcher,
+    "scan" | "observeUserPromptHook" | "queuedPrompts"
+  >;
   readonly ready: InitialReady;
   readonly getSession: () => ClaudeSessionImpl | undefined;
   readonly getTurnWatcher: () => TurnStateWatcher;
@@ -104,11 +107,12 @@ export function buildClaudeHookHandler(
   }
 
   async function observeAndRequest(event: ClaudeHookEvent): Promise<BridgeProcessResult> {
-    const submissionGenerationUnchanged =
+    const capturedGeneration =
       event.hook_event_name === "Stop"
         ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
         : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
+    const queuedAt = transcriptWatcher.queuedPrompts()?.nextPosition;
     publish(event, observation);
     const outcome = await requestHook(
       {
@@ -131,6 +135,9 @@ export function buildClaudeHookHandler(
       observation.run("lifecycle", () =>
         deps.getSession()?.rememberClaudeSessionId(event.session_id),
       );
+    // Claude never runs a queued message the caller blocked, so it holds no `Stop` (C-HOOK-24).
+    if (event.hook_event_name === "UserPromptSubmit" && blocked)
+      transcriptWatcher.queuedPrompts()?.block(queuedAt, event.prompt);
     observation.run("activity", () =>
       emitter.emit(
         "activity",
@@ -147,19 +154,22 @@ export function buildClaudeHookHandler(
     observation.run("activity", () => deps.onHookOutcome?.(event, outcome.result));
     if (event.hook_event_name === "InstructionsLoaded")
       observation.run("lifecycle", () => ready.mark());
-    if (event.hook_event_name === "Stop" && !blocked) {
-      observation.run("transcript", () => transcriptWatcher.scan());
-      // Diagnostic callbacks may submit input; report before comparing physical generations.
-      observation.report();
-      // Guidance may steer the current turn; every physical submission supersedes this Stop.
-      const sameSubmissionGeneration = submissionGenerationUnchanged?.() ?? true;
-      if (sameSubmissionGeneration) {
-        deps.getTurnWatcher().arm();
-        observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
-      }
-    }
+    if (event.hook_event_name === "Stop" && !blocked)
+      endUnblockedStop(observation, capturedGeneration ?? (() => true));
     observation.report();
     return serialized;
+  }
+
+  function endUnblockedStop(observation: HookObservation, unchanged: () => boolean): void {
+    observation.run("transcript", () => transcriptWatcher.scan());
+    // Diagnostic callbacks may submit input; report before comparing physical generations.
+    observation.report();
+    // Guidance may steer the current turn; every physical submission supersedes this Stop.
+    const session = deps.getSession();
+    if (!unchanged()) return;
+    deps.getTurnWatcher().arm();
+    const stop = { transcriptWatcher, observation, submissionGenerationUnchanged: unchanged };
+    if (session) endTurnUnlessQueued({ session, ...stop });
   }
 }
 

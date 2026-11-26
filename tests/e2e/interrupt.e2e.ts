@@ -6,7 +6,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type ElwoodAgentSession, startClaude, startCodex } from "../../src/index.ts";
-import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
+import {
+  cleanup,
+  makeProject,
+  skipIf,
+  skipReason,
+  skipTurns,
+  waitFor,
+  waitForVisibleTurn,
+} from "./helpers.ts";
 
 type InterruptOutcome = { readonly sawRunning: boolean; readonly lastStatus: string | undefined };
 
@@ -26,21 +34,20 @@ async function interruptFlow(
   // there we wait for a stream of distinct rendered frames instead.
   let lastFrame = session.terminal.snapshot().text;
   let distinctFrames = 0;
-  await waitFor(
-    () => {
-      if (!narrow) {
-        return /esc to interrupt/i.test(session.terminal.snapshot().text) ? true : undefined;
-      }
-      const frame = session.terminal.snapshot().text;
-      if (frame !== lastFrame) {
-        lastFrame = frame;
-        distinctFrames += 1;
-      }
-      return distinctFrames >= 6 ? true : undefined;
-    },
-    "turn visibly running",
-    60_000,
-  );
+  if (narrow)
+    await waitFor(
+      () => {
+        const frame = session.terminal.snapshot().text;
+        if (frame !== lastFrame) {
+          lastFrame = frame;
+          distinctFrames += 1;
+        }
+        return distinctFrames >= 6 ? true : undefined;
+      },
+      "turn visibly running",
+      60_000,
+    );
+  else await waitForVisibleTurn(session);
   // C-API-38: the first-class interrupt writes Escape and resolves on ready.
   await session.interrupt({ timeoutMs: 60_000 });
   // C-TURN-02: ready returns regardless of whether a Stop hook fires — on a

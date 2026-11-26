@@ -8,7 +8,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { startClaude } from "../../src/index.ts";
-import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
+import {
+  cleanup,
+  makeProject,
+  skipIf,
+  skipReason,
+  skipTurns,
+  waitFor,
+  waitForVisibleTurn,
+} from "./helpers.ts";
 
 const marker = "ELWOOD_INTERRUPTED_GUIDANCE";
 
@@ -43,11 +51,7 @@ test("C-API-62 real Claude shows guidance once when an interrupt makes Claude sc
     await session.sendMessage(
       "Write a detailed 1,200-word essay about terminal history. Do not use tools.",
     );
-    await waitFor(
-      () => (/esc to interrupt/i.test(session.terminal.snapshot().text) ? true : undefined),
-      "turn visibly running",
-      60_000,
-    );
+    await waitForVisibleTurn(session);
     await session.sendGuidance(`Coordinator note: reply with only the word ${marker}.`);
     await waitFor(() => (guidanceHooks === 1 ? true : undefined), "the guidance's hook", 30_000);
     await session.interrupt();

@@ -1,7 +1,7 @@
 /**
  * Match blank authenticated Claude hooks to committed user records. Show each nonblank hook unless
  * transcript recovery already showed its prompt, or it screens a still-queued message again
- * (PRD §5.4, C-API-62, C-API-63).
+ * (PRD §5.4, C-API-62, C-API-63). Track queued messages for the `Stop` hold (§6.5, C-HOOK-24).
  */
 import { isRecord } from "../../core/predicates.ts";
 import { claudePromptPresentation } from "../pasted-content.ts";
@@ -13,7 +13,7 @@ import {
   textDigest,
   turnDigestKey,
 } from "./prompt-keys.ts";
-import { ClaudeQueuedPrompts } from "./queued-prompts.ts";
+import { ClaudeQueuedPrompts, type QueuedPromptsView } from "./queued-prompts.ts";
 import { maxIdentifierBytes } from "./turn-identity.ts";
 import type {
   PromptEvidence,
@@ -50,6 +50,9 @@ export class ClaudeUserPrompts {
 
   forgetQueued(): void {
     this.queued.clear();
+  }
+  get queuedPrompts(): QueuedPromptsView {
+    return this.queued;
   }
 
   forget(path: string): void {
@@ -119,8 +122,13 @@ export class ClaudeUserPrompts {
   }
 
   /** Publish an exact pending path/ID match or retain text for a hook that arrives later. */
-  observeForwardRecord(path: string, turnId: string | undefined, item: unknown): void {
-    this.queued.observeRecord(item);
+  observeForwardRecord(
+    path: string,
+    turnId: string | undefined,
+    item: unknown,
+    liveMainConversation: boolean,
+  ): void {
+    this.queued.observeRecord(item, liveMainConversation);
     if (
       turnId === undefined ||
       !isRecord(item) ||
@@ -129,6 +137,8 @@ export class ClaudeUserPrompts {
       this.shownTurnIds.has(turnId)
     )
       return;
+    // Its messages were shown at their own hooks; messages queued during it reuse its ID (C-HOOK-24).
+    if (item["promptSource"] === "queued") return void addBounded(this.shownTurnIds, turnId);
     const identity = promptLocation(path, turnId);
     if (!identity) return;
     const { key } = identity;

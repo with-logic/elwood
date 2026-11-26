@@ -18,3 +18,14 @@ export async function waitFor<T>(
   }
   throw new Error(`Timed out waiting for ${label}`);
 }
+
+/** Waits until the agent's footer shows a running turn. */
+export function waitForVisibleTurn(session: {
+  readonly terminal: { snapshot(): { readonly text: string } };
+}): Promise<true> {
+  return waitFor(
+    () => (/esc to interrupt/i.test(session.terminal.snapshot().text) ? true : undefined),
+    "turn visibly running",
+    60_000,
+  );
+}

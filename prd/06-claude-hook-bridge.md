@@ -275,6 +275,42 @@ The `Stop` hook is the canonical signal that a Claude turn completed and the
 session is ready for the next prompt. If a `Stop` handler blocks stopping and
 returns feedback to Claude, Elwood must not mark the session ready.
 
+A message submitted while a turn runs, such as `sendGuidance` text, can still be
+queued in Claude when that turn stops. Claude then runs every queued message at
+once as one new turn with its own `Stop`. Such a `Stop` must not mark the session
+ready. The session stays `running` until the queued turn's `Stop`. For each
+queued message, Claude Code 2.1.332 writes a `queue-operation` `dequeue` record
+74 to 340 ms after the first `Stop` (measured), then a user record with a new
+`promptId` and `promptSource: "queued"`. It fires no `UserPromptSubmit` for the
+queued turn. A message submitted during the queued turn fires its
+`UserPromptSubmit` under that new `promptId`, so it is queued in turn, and the
+queued turn's `Stop` is held the same way.
+
+A message counts as queued from its `UserPromptSubmit` until the transcript
+shows it delivered. Delivery is either a `queue-operation` `remove` record,
+which Claude writes when it delivers the message at a tool boundary inside the
+running turn, or a user record with `promptSource: "queued"`. Claude never runs
+a message whose `UserPromptSubmit` the caller's handler blocked, so that message
+holds no `Stop`. A `Stop` holds only for messages queued since the previous
+`Stop`; earlier ones belong to that earlier `Stop`. A `Stop` that holds for none
+forgets every message queued before it and marks readiness immediately.
+
+Only a live `dequeue` record in the session's own transcript shows that Claude
+started the queued turn. A record replayed after a rewind does not, and neither
+does one in a subagent transcript. A `dequeue` record alone does not deliver a
+message. After a `dequeue`, a message queued before the `Stop` that still has no
+`queued` user record 2 s after the `Stop` is forgotten, and the queued turn's own
+`Stop` marks readiness.
+
+If no `dequeue` record appears within 2 s of the `Stop`, Claude did not run the
+queued messages. Elwood then forgets the messages that were queued before that
+`Stop`, and keeps any queued later. That `Stop` then emits one
+`queued_turn_unconfirmed` warning and marks the session ready, unless the
+session's status changed after that `Stop` or a newer caller submission
+superseded it. A status change means other evidence already ended the turn, or
+a later turn started, for example from raw input. Without transcript
+correlation, a `Stop` marks readiness immediately.
+
 The headless terminal screen model may be used for startup automation,
 environment warnings, diagnostics, or UI hints. On a **cold start** it is not the
 source of truth for readiness — a rendered composer there is only a placeholder

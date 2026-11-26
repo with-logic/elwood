@@ -16,13 +16,18 @@ test("C-API-62 a nonblank hook that reuses a shown prompt ID keeps its message",
   expect(hook("running", "Coordinator note: end with MARK.")).toBe(true);
   expect(hook("running", "Coordinator note: end with MARK.")).toBe(true);
   // The hook already showed this ID, so its transcript copy is not shown again.
-  prompts.observeForwardRecord(path, "running", nativeUser("running", "Write an essay."));
+  prompts.observeForwardRecord(path, "running", nativeUser("running", "Write an essay."), true);
   expect(prompts.observeHook({ path, turnId: "running", hasText: false }, true)).toBe(false);
   expect(events).toEqual([]);
   // A textless submission waiting for its record keeps it when queued input reuses its ID.
   prompts.observeHook({ path, turnId: "textless", hasText: false }, true);
   expect(hook("textless", "Coordinator note.")).toBe(true);
-  prompts.observeForwardRecord(path, "textless", nativeUser("textless", "Describe this image."));
+  prompts.observeForwardRecord(
+    path,
+    "textless",
+    nativeUser("textless", "Describe this image."),
+    true,
+  );
   expect(events).toMatchObject([{ turnId: "textless", summary: { text: "Describe this image." } }]);
 });
 
@@ -31,7 +36,12 @@ test("C-API-63 only a recent transcript recovery suppresses a nonblank hook", ()
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   for (let index = 0; index <= 64; index++) {
     prompts.observeHook({ path, turnId: `r-${index}`, hasText: false }, true);
-    prompts.observeForwardRecord(path, `r-${index}`, nativeUser(`r-${index}`, `text ${index}`));
+    prompts.observeForwardRecord(
+      path,
+      `r-${index}`,
+      nativeUser(`r-${index}`, `text ${index}`),
+      true,
+    );
   }
   expect(events).toHaveLength(65);
   const hook = (turnId: string, prompt: string) =>
@@ -46,7 +56,7 @@ test("C-API-62 a queued message that Claude screens again under a new ID is show
   const prompts = new ClaudeUserPrompts(() => undefined);
   const hook = (turnId: string, prompt: string) =>
     prompts.observeHook({ path, turnId, hasText: true, prompt }, true);
-  const delivered = (item: unknown) => prompts.observeForwardRecord(path, undefined, item);
+  const delivered = (item: unknown) => prompts.observeForwardRecord(path, undefined, item, true);
   expect(hook("running", "Write an essay.")).toBe(true);
   expect(hook("running", "Note A.")).toBe(true);
   expect(hook("running", "Note B.")).toBe(true);
@@ -62,10 +72,12 @@ test("C-API-62 a queued message that Claude screens again under a new ID is show
     message: { content: [] },
   });
   delivered("not a record");
-  prompts.observeForwardRecord(path, "a", {
-    ...nativeUser("a", "Note A."),
-    promptSource: "queued",
-  });
+  prompts.observeForwardRecord(
+    path,
+    "a",
+    { ...nativeUser("a", "Note A."), promptSource: "queued" },
+    true,
+  );
   expect(hook("next", "Note A.")).toBe(true);
   // A message taken inside the running turn is removed from Claude's queue.
   expect(hook("next", "Note C.")).toBe(true);
@@ -117,6 +129,46 @@ test("C-API-62 a transcript rewind leaves no queued message pending", () => {
     writeRecords(live, { ...nativeUser("old-3", "Note B."), promptSource: "queued" });
     watcher.scan();
     expect(hook("after-rewind", "Note C.")).toBe(true);
+  } finally {
+    watcher.stop();
+  }
+});
+
+test("C-HOOK-24 only live dequeue records of the main transcript count as a started queued turn", () => {
+  const [live, agent] = [tmpFile(), tmpFile()];
+  const watcher = new ClaudeTranscriptWatcher("s", () => undefined);
+  const dequeue = { type: "queue-operation", operation: "dequeue" };
+  const queued = () => watcher.queuedPrompts();
+  const anyPending = () => queued()?.hasPendingIn({ from: 0, to: Number.MAX_SAFE_INTEGER });
+  writeRecords(live);
+  writeRecords(agent);
+  try {
+    watcher.observe(live);
+    watcher.observe(agent, false, undefined, true);
+    appendRecords(live, [], nativeUser("old-1", "x".repeat(200)), dequeue);
+    appendRecords(agent, [], dequeue);
+    watcher.scan();
+    expect(queued()?.dequeueCount).toBe(1); // counted with nothing pending; not the subagent's
+    watcher.observeUserPromptHook({
+      path: live,
+      turnId: "running",
+      hasText: true,
+      prompt: "Essay.",
+    });
+    watcher.observeUserPromptHook({
+      path: live,
+      turnId: "running",
+      hasText: true,
+      prompt: "Note.",
+    });
+    expect(anyPending()).toBe(true);
+    // A shorter rewrite replays old records: an old dequeue starts no turn now.
+    writeRecords(live, dequeue);
+    watcher.scan();
+    expect(queued()?.dequeueCount).toBe(1);
+    expect(anyPending()).toBe(false);
+    watcher.finish();
+    expect(queued()).toBeUndefined();
   } finally {
     watcher.stop();
   }

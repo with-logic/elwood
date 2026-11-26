@@ -1914,6 +1914,23 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   shown prompt ID now suppresses only transcript recovery, never a nonblank hook. Measured with
   `sendGuidance` in three private-config sessions, two without tools and one with, 2026-11-25
   (C-API-62).
+- The queued turn after a no-tool turn's `Stop` starts at once. In Claude 2.1.332 the screen
+  keeps its working footer from the first turn into the queued one, with no idle composer
+  between them. Two messages queued in one turn produced two `dequeue` records 74 ms after the
+  `Stop`, two user records with new IDs and `promptSource: "queued"`, one reply answering both,
+  and one `Stop` under the second ID. Elwood used to mark the session `ready` at the first
+  `Stop` and stayed `ready` while Claude worked, because the rendered turn watcher saw no new
+  start. A `Stop` with a message still queued now waits up to 2 s for a `dequeue` record and,
+  once one appears, leaves readiness to the queued turn's `Stop`. Guidance sent 2.8 s into a
+  queued turn fired `UserPromptSubmit` under the queued turn's NEW prompt ID, the one its
+  `queued` user record names. That turn's `Stop` was then followed by a third turn for that
+  guidance. Elwood marks that ID as the running turn when it reads the record, so the guidance
+  is queued and the queued turn's `Stop` is held as well. In two runs where a caller's
+  `UserPromptSubmit` handler blocked the queued message, Claude never ran it and wrote no
+  `remove` or `dequeue` record for it, so the pending entry outlived the `Stop`. Rendered
+  evidence (the idle composer) then marked the session ready 15 and 18 ms after the `Stop`.
+  Elwood now marks a blocked message so that it holds no `Stop`, and that `Stop` marks readiness
+  itself. Measured 2026-11-26 (C-HOOK-24, `tests/e2e/guidance-queued-turn-claude.e2e.ts`).
 - An interrupt while Claude 2.1.332 is still screening the queued message, that is, before its
   `UserPromptSubmit` hook has returned, makes Claude fire the hook AGAIN as it runs the message as
   its own turn. The second hook has a NEW `prompt_id` and the same `prompt`. The transcript then

@@ -19,7 +19,7 @@ test("keeps exact matching evidence separate across transcript paths", () => {
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   const commit = (target: string, id: string, text?: string) => {
     const item = record(id, text);
-    prompts.observeForwardRecord(target, id, item);
+    prompts.observeForwardRecord(target, id, item, true);
   };
   commit(path, "cached");
   commit(path, "cached", "duplicate");
@@ -40,7 +40,7 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   const events: unknown[] = [];
   const prompts = new ClaudeUserPrompts((event) => events.push(event));
   const commit = (target: string, id: string, padding = "") => {
-    prompts.observeForwardRecord(target, id, record(id, `native prompt${padding}`));
+    prompts.observeForwardRecord(target, id, record(id, `native prompt${padding}`), true);
   };
   expect(prompts.observeHook({ path: undefined, turnId: "pathless", hasText: false }, true)).toBe(
     false,

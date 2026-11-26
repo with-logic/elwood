@@ -130,7 +130,10 @@ export class LineEmitter {
     }
     const turnId = this.turns.observe(path, item);
     if (this.turns.correlationDisabled) this.userPrompts.clearUnpaired();
-    if (source !== "history") this.userPrompts.observeForwardRecord(path, turnId, item);
+    const subagent = this.subagentPaths.has(path);
+    const liveMainConversation = source === "forward" && !subagent;
+    if (source !== "history")
+      this.userPrompts.observeForwardRecord(path, turnId, item, liveMainConversation);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
     if (summaries.length === 0) {
@@ -142,10 +145,8 @@ export class LineEmitter {
       });
       return;
     }
-    const subagent = this.subagentPaths.has(path);
     const finalReplyIndex = subagent ? -1 : claudeFinalReplyIndex(item, summaries);
     const base = this.eventFields(path, item, turnId);
-    const liveMainConversation = source === "forward" && !subagent;
     if (liveMainConversation && this.onUsageLimit) {
       const usageLimitWarning = claudeUsageLimitWarning(base, summaries);
       if (usageLimitWarning) this.onUsageLimit(usageLimitWarning);

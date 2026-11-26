@@ -19,7 +19,15 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
+import {
+  cleanup,
+  makeProject,
+  skipIf,
+  skipReason,
+  skipTurns,
+  waitFor,
+  waitForVisibleTurn,
+} from "./helpers.ts";
 
 type GuidanceOutcome = {
   // Status transitions observed from the moment guidance was sent until it
@@ -54,11 +62,7 @@ async function guidanceFlow(
   await session.sendMessage(
     "Write a detailed 2,000-word essay about terminal history. Do not use tools.",
   );
-  await waitFor(
-    () => (/esc to interrupt/i.test(session.terminal.snapshot().text) ? true : undefined),
-    "turn visibly running",
-    60_000,
-  );
+  await waitForVisibleTurn(session);
   // Record status transitions across the guidance send. A `ready` transition would
   // mean guidance waited for the turn to finish; C-API-37 requires it to overtake
   // readiness and enter the TUI immediately, so no `ready` may intervene.

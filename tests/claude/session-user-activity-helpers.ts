@@ -1,7 +1,7 @@
 /** Authenticated Claude hook and transcript fixtures for user activity (PRD §5.4). */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
+import { type ElwoodActivityEvent, type StartClaudeOptions, startClaude } from "../../src/index.ts";
 import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
 import { installFakes, ptys, tempDir } from "./helpers.ts";
 
@@ -11,12 +11,12 @@ export function user(promptId: string, content: unknown) {
   return { type: "user", uuid: `user-${promptId}`, promptId, message: { content } };
 }
 
-export async function startActivitySession() {
+export async function startActivitySession(options: Omit<StartClaudeOptions, "cwd"> = {}) {
   installFakes();
   const cwd = tempDir();
   const transcript = join(cwd, "transcript.jsonl");
   writeFileSync(transcript, "");
-  const session = await startClaude({ cwd });
+  const session = await startClaude({ ...options, cwd });
   const events: ElwoodActivityEvent[] = [];
   session.on("activity", (event) => events.push(event));
   return {
@@ -35,8 +35,8 @@ export async function startActivitySession() {
   };
 }
 
-export async function startPromptActivitySession() {
-  const { session, hook, events, append } = await startActivitySession();
+export async function startPromptActivitySession(options: Omit<StartClaudeOptions, "cwd"> = {}) {
+  const { session, hook, events, append } = await startActivitySession(options);
   const pty = ptys.at(-1)!;
   const paint = async () => {
     pty.emitData(emptyComposer("claude"));

@@ -104,3 +104,18 @@ export type TurnCommitWaitExpiredWarning = {
   readonly message: string;
   readonly raw: string;
 };
+
+/**
+ * Content-free: Claude neither started a turn for the messages still queued at a `Stop` nor
+ * otherwise ended that turn within the bound, so that `Stop` marked the session ready (§6.5,
+ * C-HOOK-24).
+ */
+export type ClaudeQueuedTurnUnconfirmedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "claude";
+  readonly source: "lifecycle";
+  readonly code: "queued_turn_unconfirmed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly raw: "queued_turn_unconfirmed";
+};
