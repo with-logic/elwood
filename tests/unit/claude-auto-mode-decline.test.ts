@@ -2,7 +2,7 @@
  * Claude's auto-mode setup offer is declined with Esc, spaced past the offer's input guard
  * and retried until a settled frame shows it gone (C-CLAUDE-27, PRD §5.1).
  */
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import {
   ClaudeAutoModeOfferDecliner,
   type OfferDeclineWriter,
@@ -85,10 +85,74 @@ test("C-CLAUDE-27 a menu that closes or never settles before the first Esc claim
   expect(await closed).toBe("cancelled");
   expect(closing.keys).toEqual([]);
   // A frame that never settles is not proof either way, and an Esc that is withheld is
-  // not one that went out.
-  const later = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
-  const withheld: OfferDeclineWriter = () => Promise.resolve("withheld" as const);
+  // not one that went out: the decline keeps trying until the session closes.
+  const lifetime = new AbortController();
+  const later = new ClaudeAutoModeOfferDecliner(lifetime.signal, spacingMs);
+  let attempts = 0;
+  const withheld: OfferDeclineWriter = () => {
+    if (++attempts === 6) lifetime.abort();
+    return Promise.resolve("withheld" as const);
+  };
   expect(await later.handle(offer, withheld, () => undefined)?.settled).toBe("cancelled");
+  expect(attempts).toBe(6);
+});
+
+test("C-CLAUDE-27 a withheld Esc does not spend the budget, so the offer is declined once rendering recovers", async () => {
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacingMs);
+  const { keys, write, read } = screen(1);
+  let withheld = 0;
+  // Five attempts, more than the cap, cannot observe a settled frame; the sixth can.
+  const recovering: OfferDeclineWriter = (input, stillValid) => {
+    if (withheld === 5) return write(input, stillValid);
+    withheld++;
+    return Promise.resolve("withheld" as const);
+  };
+  expect(await decliner.handle(read(), recovering, read)?.settled).toBe("answered");
+  expect(withheld).toBe(5);
+  expect(keys).toEqual(["\u001b"]);
+});
+
+/** Real spacing on fake timers, so a test can act between an Esc and the next check. */
+function fakeSpacing(): number {
+  vi.useFakeTimers();
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
+  return 750;
+}
+
+test("C-CLAUDE-27 caller input after a settled frame shows the dismissal leaves the decline Elwood's", async () => {
+  const spacing = fakeSpacing();
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacing);
+  const { keys, write, read } = screen(1);
+  const settled = decliner.handle(read(), write, read)?.settled;
+  await vi.advanceTimersByTimeAsync(spacing);
+  expect(keys).toEqual(["\u001b"]);
+  // Claude repaints without the menu, and the caller types into the composer before the
+  // decline's next check.
+  decliner.handle(read(), write, read);
+  decliner.callerInput();
+  await vi.advanceTimersByTimeAsync(spacing);
+  expect(await settled).toBe("answered");
+});
+
+test("C-CLAUDE-27 only a settled frame after an Esc, before caller input, shows Elwood's dismissal", async () => {
+  const spacing = fakeSpacing();
+  const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal, spacing);
+  const { keys, write, read } = screen(1);
+  const settled = decliner.handle(read(), write, read)?.settled;
+  // A frame without the menu before any Esc is not Elwood's dismissal.
+  decliner.handle(idle, write, () => idle);
+  await vi.advanceTimersByTimeAsync(spacing);
+  expect(keys).toEqual(["\u001b"]);
+  // Neither an unsettled frame nor a settled one that still shows the menu proves it.
+  decliner.handle(idle, write, () => undefined);
+  decliner.handle(idle, write, () => offer);
+  decliner.callerInput();
+  // Once the caller has typed on the offer, a later frame cannot give it back.
+  decliner.handle(idle, write, () => idle);
+  await vi.advanceTimersByTimeAsync(spacing);
+  expect(await settled).toBe("cancelled");
 });
 
 test("C-CLAUDE-27 session close cancels a decline in flight; a failed write rejects and retries", async () => {

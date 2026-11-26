@@ -9,12 +9,12 @@ import type { TrustPromptIdFor } from "../trust/prompts.ts";
 export type { TrustPromptIdFor } from "../trust/prompts.ts";
 
 /**
- * The single source of truth for the non-trust startup-prompt labels, keyed by
- * owning agent: the browser-tools and auto-mode setup declines are Claude-only
- * (C-CLAUDE-11, C-CLAUDE-27) and the skip-update prompt is Codex-only
- * (C-CODEX-12). Every non-trust union and the runtime check below are DERIVED
- * from this table, so they cannot drift from each other or from the §5.4 label
- * contract. Adding an agent's label here extends both the type and the check.
+ * The non-trust startup-prompt labels, keyed by owning agent: the browser-tools
+ * and auto-mode setup declines are Claude-only (C-CLAUDE-11, C-CLAUDE-27) and the
+ * skip-update prompt is Codex-only (C-CODEX-12). Every non-trust union and the
+ * runtime check below are derived from this table, so the type and the check
+ * cannot drift from each other. The table does not update the §5.4 label table
+ * or a second implementation: change those with it.
  */
 const nonTrustStartupLabels = {
   claude: ["browser_tools", "auto_mode_setup"],
@@ -30,8 +30,8 @@ type NonTrustStartupLabel<A extends ElwoodAgentKind> = (typeof nonTrustStartupLa
 
 /**
  * Every startup-prompt label for one agent: its own allowlisted trust ids plus
- * its own non-trust prompts. Matches the PRD's exact per-agent label contract
- * (§5.4) so a second implementation and this type can never drift.
+ * its own non-trust prompts. It must match the per-agent label table in §5.4,
+ * which is kept in step by hand.
  */
 export type StartupPromptLabelFor<A extends ElwoodAgentKind> =
   | TrustPromptIdFor<A>

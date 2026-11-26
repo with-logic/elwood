@@ -79,16 +79,35 @@ test.each([
   expect(isClaudeAutoModeOffer(text)).toBe(false);
 });
 
-test("C-ATTN-09 each frame is split at most once, and a frame without the title not at all", () => {
+/** Counts `String.prototype.split` calls for the rest of the test. */
+function countSplits() {
   const split = vi.spyOn(String.prototype, "split");
   onTestFinished(() => split.mockRestore());
+  return split;
+}
+
+test("C-ATTN-09 a frame without the offer's title is not split", () => {
+  const split = countSplits();
+  expect(isClaudeAutoModeOffer(composer)).toBe(false);
+  expect(isClaudeAutoModeOfferMenu(composer)).toBe(false);
+  expect(split).not.toHaveBeenCalled();
+});
+
+test("C-ATTN-09 the screen rule and the decliner share one split of the same frame", () => {
+  const split = countSplits();
   // A fresh copy, so no earlier read of the same text is reused.
   const frame = `${offer}\n`;
-  for (const text of [composer, frame]) {
-    split.mockClear();
-    // The screen rule and the decliner both read every frame.
-    expect(isClaudeAutoModeOffer(text)).toBe(text === frame);
-    expect(isClaudeAutoModeOfferMenu(text)).toBe(text === frame);
-    expect(split).toHaveBeenCalledTimes(text === frame ? 1 : 0);
-  }
+  expect(isClaudeAutoModeOffer(frame)).toBe(true);
+  expect(isClaudeAutoModeOfferMenu(frame)).toBe(true);
+  expect(split).toHaveBeenCalledTimes(1);
+});
+
+test("C-ATTN-09 a frame's text is not kept past the task that read it", async () => {
+  const frame = `${offer}\n\n`;
+  expect(isClaudeAutoModeOffer(frame)).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const split = countSplits();
+  // Nothing from the earlier task is reused: the same text is read afresh.
+  expect(isClaudeAutoModeOfferMenu(frame)).toBe(true);
+  expect(split).toHaveBeenCalledTimes(1);
 });

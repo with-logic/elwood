@@ -42,9 +42,9 @@ async function withOfferOn(trigger: string, dialog = offerOnScreen) {
   let paintedAt: number | undefined;
   pty.write = (data) => {
     write(data);
-    if (typeof data === "string" && !firstWrite.has(data)) firstWrite.set(data, Date.now());
+    if (typeof data === "string" && !firstWrite.has(data)) firstWrite.set(data, performance.now());
     if (data !== trigger) return;
-    paintedAt = Date.now();
+    paintedAt = performance.now();
     pty.emitData(dialog);
   };
   return { facade, live, pty, firstWrite, painted: () => paintedAt };
@@ -69,7 +69,7 @@ test("C-ATTN-09 C-CLAUDE-27 an Enter held behind the offer submits the paste it 
     const declinedAt = firstWrite.get(esc);
     expect(paintedAt).toBeDefined();
     expect(declinedAt).toBeDefined();
-    // Node timers can fire a millisecond early against `Date.now()`, so allow a few.
+    // Measured on the monotonic clock. Node timers can fire a millisecond early, so allow a few.
     expect(
       Number(declinedAt) - Number(paintedAt),
       "Elwood's Esc went out past the offer's input guard",
