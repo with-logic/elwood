@@ -1,6 +1,7 @@
 /**
- * Re-runs the release npm publication step with the real npm client, offline,
- * for a version already on npm and for registry lookups that fail. The
+ * Re-runs the release npm lookup and publication steps with the real npm
+ * client, offline, for a version already on npm and for registry lookups that
+ * fail. The
  * release-unpublished tests cover a version npm does not have yet.
  */
 import assert from "node:assert/strict";
@@ -22,10 +23,18 @@ const unreachable = "http://127.0.0.1:1023/";
 
 for (const version of ["0.8.0", "0.7.0"]) {
   test(`a re-run skips ${version}, which this workflow published from the release commit`, () => {
-    const { publishLog, result } = publish({ version, releaseCommit: commitOf[version] });
+    const { outputs, publishLog, result } = publish({
+      version,
+      releaseCommit: commitOf[version],
+    });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(publishLog, "");
-    assert.match(result.stdout, /This workflow already published .*; skipping\./u);
+    // The build steps and the upload run only on `publish=true`.
+    assert.equal(outputs, "publish=false\n");
+    assert.match(
+      result.stdout,
+      /This workflow already published .*; skipping the build and the upload\./u,
+    );
   });
 }
 

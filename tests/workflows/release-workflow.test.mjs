@@ -56,6 +56,37 @@ test("publish jobs take turns, keeping every waiting job", () => {
   assert.doesNotMatch(workflow, /^concurrency:/mu);
 });
 
+// The lookup decides before the build: a re-run with nothing left to publish
+// skips the install, check and tarball smoke, and a version that cannot be
+// published fails before its tag is pushed.
+test("the npm lookup runs before the build, which runs only with something to publish", () => {
+  const steps = job("publish")
+    .split(/^ {6}- /mu)
+    .slice(1);
+  const names = steps.map((step) => /^(?:name|uses): (.+)$/mu.exec(step)?.[1]);
+  assert.deepEqual(names, [
+    "actions/checkout@v6",
+    "actions/setup-node@v6",
+    "Verify package version matches the release tag",
+    "Look up this version on npm",
+    "Install dependencies",
+    "Build, typecheck, lint, line cap, unit and conformance tests",
+    "Verify the packed tarball carries a runnable CLI",
+    "Create tag",
+    "Publish to npm",
+  ]);
+  const step = (name) => steps[names.indexOf(name)];
+  assert.match(step("Look up this version on npm"), /^ {8}id: registry$/mu);
+  for (const name of [
+    "Install dependencies",
+    "Build, typecheck, lint, line cap, unit and conformance tests",
+    "Verify the packed tarball carries a runnable CLI",
+    "Publish to npm",
+  ]) {
+    assert.match(step(name), /^ {8}if: steps\.registry\.outputs\.publish == 'true'$/mu, name);
+  }
+});
+
 // Replays real `gh api` answers for the exact lookup the step makes; any
 // other call fails. GitHub answers 404 for a draft as for a missing release.
 const releaseLookup = [

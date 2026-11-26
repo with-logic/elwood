@@ -10,15 +10,16 @@ name: Release
 # Re-running a run, whether its failed jobs or all of them, finishes the
 # release. The lightweight tag this workflow pushes on the release commit is
 # reused, and a version this workflow already published from that commit and a
-# published GitHub release are left as they are. Any other tag of that name
-# fails the run. A version that a newer stable, undeprecated one on npm has
-# overtaken when the publish step looks is not published, because it cannot
-# take `latest`: the step fails, naming the newer version. Publish jobs take
+# published GitHub release are left as they are; the publish job then skips
+# its build. Any other tag of that name fails the run. A version that a newer
+# stable, undeprecated one on npm has overtaken when the publish job looks,
+# before its build, is not published, because it cannot take `latest`: the job
+# fails, naming the newer version, before it pushes the tag. Publish jobs take
 # turns, and the newest GitHub release stays Latest. A tag push, dispatch or
 # re-run runs this file as it is at its commit, and a revision without the
 # publish job's `concurrency` neither waits nor keeps Latest on the newest
 # release: do not run or re-run one. Create a GitHub release it left missing
-# by hand, as the publish step's notes describe. A run of such a revision, like
+# by hand, as the lookup step's notes describe. A run of such a revision, like
 # a version published by hand, can land between that look and the upload.
 on:
   push:
@@ -214,9 +215,6 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Verify package version matches the release tag
         run: |
           set -euo pipefail
@@ -226,56 +224,11 @@ jobs:
             exit 1
           fi
 
-      # Safety gate: never publish a build that cannot pass the full check.
-      # This also produces `dist/`, which the published tarball ships.
-      - name: Build, typecheck, lint, line cap, unit and conformance tests
-        run: npm run check
-
-      - name: Verify the packed tarball carries a runnable CLI
-        run: |
-          set -euo pipefail
-          npm pack --pack-destination "$RUNNER_TEMP"
-          tarball="$RUNNER_TEMP/with-logic-elwood-${{ needs.resolve.outputs.version }}.tgz"
-          work="$(mktemp -d)"
-          cd "$work"
-          npm init -y >/dev/null
-          npm install "$tarball"
-          # The package declares no install scripts, so this must work with a
-          # prebuilt dist straight out of the tarball (C-CLI-01).
-          ./node_modules/.bin/elwood --version
-
-      - name: Create tag
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        env:
-          RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
-          TAG: ${{ needs.resolve.outputs.tag }}
-        run: |
-          set -euo pipefail
-          # Pushes a lightweight tag. A re-run after a failed publish pushes the
-          # tag its first attempt pushed, which succeeds as a no-op; Git rejects
-          # the push when the tag names anything else.
-          git push origin "$RELEASE_COMMIT:refs/tags/$TAG"
-
-      # Publishes via npm trusted publishing (OIDC) — no NPM_TOKEN required.
-      # This relies on a trusted publisher configured at npmjs.com for
-      # @with-logic/elwood pointing at this repository AND this workflow
-      # filename (release.yml). Renaming this file breaks publishing until the
-      # npmjs.com configuration is updated to match, and a reconfiguration
-      # also needs NPM_TRUSTED_PUBLISHER_CONFIG_ID below updated. Provenance is
-      # implied by trusted publishing, so the flag is not passed.
-      # Requires npm >= 11.5.1 and Node >= 22.14.0 (Node 24.x ships npm 11.6+).
-      #
-      # BOOTSTRAP: a trusted publisher can only be attached to a package that
-      # already exists on the registry — npmjs.com has no page for a name that
-      # has never been published, and `npm access` has no trusted-publisher
-      # subcommand. So version 0.1.0 must be published once by hand from a
-      # logged-in machine (`npm publish --access public`, with the
-      # `@with-logic:registry` line in ~/.npmrc overridden so it targets
-      # npmjs.org rather than GitHub Packages). After that first publish,
-      # configure the trusted publisher at
-      # npmjs.com/package/@with-logic/elwood/access and every later release
-      # runs tokenlessly through this workflow. Once one has, set
-      # NPM_TRUSTED_PUBLISHER_CONFIG_ID below from it.
+      # Looks this version up before the build, so a re-run with nothing left
+      # to publish skips the install, the check and the tarball smoke, and a
+      # version that cannot be published fails before its tag is pushed.
+      # npm's own check at upload reads the registry again after the build,
+      # so it still refuses a newer version that this look missed.
       #
       # The step reads this version's document from the registry directly,
       # because `npm view` would redact the configuration ID, as it redacts
@@ -299,23 +252,27 @@ jobs:
       # that release for the publish tests, which replay releases published
       # under this ID. A re-run runs this file as it was at the release commit,
       # so when that copy names another configuration, a re-run after a
-      # successful publish fails here instead of skipping; publish the GitHub
+      # successful publish fails here instead of skipping; create the GitHub
       # release by hand with `gh release create <tag> --generate-notes`,
       # adding `--latest=false` if a newer release exists. A first publish is
       # unaffected.
-      # - Not on npm (404): publish, unless the package's abbreviated
-      #   packument, read the same way, has a newer stable version that is not
-      #   deprecated: npm refuses to move `latest` back from one. Then fail,
-      #   naming that version. Elwood ships no backports, so a version a newer
-      #   release overtook is published only by hand, under an explicit `--tag`.
+      # - Not on npm (404): build, check and publish, unless the package's
+      #   abbreviated packument, read the same way, has a newer stable version
+      #   that is not deprecated: npm refuses to move `latest` back from one.
+      #   Then fail, naming that version. Elwood ships no backports, so a
+      #   version a newer release overtook is published only by hand, under an
+      #   explicit `--tag`.
       # - Published by this workflow's trusted publisher from this commit: a
-      #   re-run has nothing left to publish.
+      #   re-run has nothing left to publish, so it skips the build and the
+      #   upload, and only reuses the tag.
       # - On npm any other way, including without a recorded commit or
       #   publisher: fail, because npm never replaces a version. The log names
       #   the commit and the kind of publisher, never the publishing account.
       # - Anything else, including a lookup that still fails after its retries
       #   or gives no answer: fail. A re-run retries.
-      - name: Publish to npm
+      # Each failure stops the job here, before the build and the tag push.
+      - name: Look up this version on npm
+        id: registry
         env:
           NPM_TRUSTED_PUBLISHER_CONFIG_ID: 7e80842b-dceb-4e20-ac47-8dba36a3ae27
           RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
@@ -438,14 +395,15 @@ jobs:
           echo "Registry lookup for $package: ${outcome:-no answer}"
           case "$outcome" in
             unpublished)
-              npm publish --access public
+              echo "publish=true" >> "$GITHUB_OUTPUT"
               ;;
             "overtaken-by "*)
               echo "::error::$package is older than ${outcome#overtaken-by }, which is already on npm, so it cannot take the latest dist-tag. To ship it anyway, publish it by hand with an explicit dist-tag: npm publish --access public --tag <tag>"
               exit 1
               ;;
             published-here)
-              echo "This workflow already published $package from $RELEASE_COMMIT; skipping."
+              echo "This workflow already published $package from $RELEASE_COMMIT; skipping the build and the upload."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
               ;;
             "already-on-npm "*)
               echo "::error::$package is already on npm, ${outcome#already-on-npm }; npm never replaces a version"
@@ -456,6 +414,68 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Install dependencies
+        if: steps.registry.outputs.publish == 'true'
+        run: npm ci
+
+      # Safety gate: never publish a build that cannot pass the full check.
+      # This also produces `dist/`, which the published tarball ships.
+      - name: Build, typecheck, lint, line cap, unit and conformance tests
+        if: steps.registry.outputs.publish == 'true'
+        run: npm run check
+
+      - name: Verify the packed tarball carries a runnable CLI
+        if: steps.registry.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          npm pack --pack-destination "$RUNNER_TEMP"
+          tarball="$RUNNER_TEMP/with-logic-elwood-${{ needs.resolve.outputs.version }}.tgz"
+          work="$(mktemp -d)"
+          cd "$work"
+          npm init -y >/dev/null
+          npm install "$tarball"
+          # The package declares no install scripts, so this must work with a
+          # prebuilt dist straight out of the tarball (C-CLI-01).
+          ./node_modules/.bin/elwood --version
+
+      - name: Create tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          RELEASE_COMMIT: ${{ needs.secret-scan.outputs.commit }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Pushes a lightweight tag. A re-run after a failed publish pushes the
+          # tag its first attempt pushed, which succeeds as a no-op; Git rejects
+          # the push when the tag names anything else.
+          git push origin "$RELEASE_COMMIT:refs/tags/$TAG"
+
+      # Publishes via npm trusted publishing (OIDC) — no NPM_TOKEN required.
+      # This relies on a trusted publisher configured at npmjs.com for
+      # @with-logic/elwood pointing at this repository AND this workflow
+      # filename (release.yml). Renaming this file breaks publishing until the
+      # npmjs.com configuration is updated to match, and a reconfiguration
+      # also needs NPM_TRUSTED_PUBLISHER_CONFIG_ID, in the lookup step above,
+      # updated. Provenance is
+      # implied by trusted publishing, so the flag is not passed.
+      # Requires npm >= 11.5.1 and Node >= 22.14.0 (Node 24.x ships npm 11.6+).
+      #
+      # BOOTSTRAP: a trusted publisher can only be attached to a package that
+      # already exists on the registry — npmjs.com has no page for a name that
+      # has never been published, and `npm access` has no trusted-publisher
+      # subcommand. So version 0.1.0 must be published once by hand from a
+      # logged-in machine (`npm publish --access public`, with the
+      # `@with-logic:registry` line in ~/.npmrc overridden so it targets
+      # npmjs.org rather than GitHub Packages). After that first publish,
+      # configure the trusted publisher at
+      # npmjs.com/package/@with-logic/elwood/access and every later release
+      # runs tokenlessly through this workflow. Once one has, set
+      # NPM_TRUSTED_PUBLISHER_CONFIG_ID in the lookup step from it.
+      - name: Publish to npm
+        if: steps.registry.outputs.publish == 'true'
+        run: |
+          npm publish --access public
 
   github-release:
     # Re-run the failed job without attempting to publish the npm version again.

@@ -1,6 +1,7 @@
 /**
- * Runs the release workflow's Publish to npm step against the local npm
- * registry (npm-registry-fixture.mjs) for the release publish tests. Each
+ * Runs the release workflow's npm lookup step, then its Publish to npm step
+ * when the lookup's `publish` output lets it, against the local npm registry
+ * (npm-registry-fixture.mjs) for the release publish tests. Each
  * `npm publish` is recorded and run for real as a dry run, so npm's own
  * version and dist-tag checks still apply.
  */
@@ -56,6 +57,11 @@ export function usePublishStep() {
     writeFileSync(join(cwd, "package.json"), JSON.stringify({ name, version }));
     return cwd;
   }
+  /**
+   * Runs the lookup, then the upload only on `publish=true`, as the upload's
+   * `if:` does. `result` joins both steps' output and ends with the status of
+   * the last one run; `outputs` is what the lookup wrote to GITHUB_OUTPUT.
+   */
   function publish({
     name = "@with-logic/elwood",
     version,
@@ -65,17 +71,30 @@ export function usePublishStep() {
   }) {
     const cwd = packageDirectory(name, version);
     const log = join(cwd, "publish.log");
+    const outputFile = join(cwd, "github-output");
     writeFileSync(log, "");
-    const result = runStep("name: Publish to npm", {
+    writeFileSync(outputFile, "");
+    const stepEnv = { ...registry.env, ...env, GITHUB_OUTPUT: outputFile, PUBLISH_LOG: log };
+    const lookup = runStep("name: Look up this version on npm", {
       cwd,
-      env: { ...registry.env, ...env, PUBLISH_LOG: log },
+      env: stepEnv,
       expressions: {
         "needs.resolve.outputs.version": version,
         "needs.secret-scan.outputs.commit": releaseCommit,
       },
       prelude: `${dryRunPublish}\n${prelude}`,
     });
-    return { publishLog: readFileSync(log, "utf8"), result };
+    const outputs = readFileSync(outputFile, "utf8");
+    const upload =
+      lookup.status === 0 && /^publish=true$/mu.test(outputs)
+        ? runStep("name: Publish to npm", { cwd, env: stepEnv, prelude: dryRunPublish })
+        : undefined;
+    const result = {
+      status: upload?.status ?? lookup.status,
+      stdout: `${lookup.stdout}${upload?.stdout ?? ""}`,
+      stderr: `${lookup.stderr}${upload?.stderr ?? ""}`,
+    };
+    return { outputs, publishLog: readFileSync(log, "utf8"), result };
   }
   function npmPublishDryRun({ name = "@with-logic/elwood", version }) {
     return spawnSync("npm", ["publish", "--access", "public", "--dry-run"], {
@@ -87,7 +106,7 @@ export function usePublishStep() {
   return { npmPublishDryRun, publish, scratch };
 }
 
-/** Asserts that a step failed on an `::error::` line ending in `reason`, without publishing. */
+/** Asserts that the lookup failed on an `::error::` line ending in `reason`, without publishing. */
 export function assertFailedWithoutPublishing({ publishLog, result }, reason) {
   assert.equal(result.status, 1);
   assert.equal(publishLog, "");
