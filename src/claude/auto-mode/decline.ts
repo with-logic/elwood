@@ -17,6 +17,11 @@ import { isClaudeAutoModeOfferMenu } from "./offer.ts";
 const offerDeclineSpacingMs = 750;
 /** Escapes written per appearance before the offer is left to the human. */
 const offerDeclineAttempts = 4;
+/**
+ * Attempts per appearance that make no progress: a withheld or rejected Esc, or a settled
+ * frame that cannot be read after the last Esc. Then the offer is left to the human.
+ */
+const offerDeclineFailures = 3;
 
 /** Writes a key only while the settled frame still satisfies `stillValid`. */
 export type OfferDeclineWriter = (
@@ -27,8 +32,9 @@ export type OfferDeclineWriter = (
 const declineKey = "\u001b";
 
 /**
- * One decline per appearance of the offer's first menu. Never the setup step that `Yes`
- * opens, and never an appearance raw caller input has touched: that one is the human's.
+ * At most one decline per appearance of the offer's first menu, whatever its outcome. Never
+ * the setup step that `Yes` opens, and never an appearance raw caller input has touched:
+ * that one is the human's.
  */
 export class ClaudeAutoModeOfferDecliner {
   /**
@@ -50,11 +56,12 @@ export class ClaudeAutoModeOfferDecliner {
   }
 
   /**
-   * Raw caller input reached the session: while the offer shows, it went to the offer.
-   * Input after Elwood's dismissal went to whatever replaced the offer.
+   * Raw caller input reached the session. Until a settled frame shows Elwood's dismissal it
+   * may have reached the offer, so the current appearance is the human's. Only the next
+   * appearance clears that, and input after the dismissal went to whatever replaced the offer.
    */
   callerInput(): void {
-    if (this.appearance !== "none" && !this.dismissed) this.humanOwned = true;
+    if (!this.dismissed) this.humanOwned = true;
   }
 
   /** Starts declining when `frameText` first shows the offer's menu. */
@@ -74,15 +81,11 @@ export class ClaudeAutoModeOfferDecliner {
     this.escapes = 0;
     this.dismissed = false;
     const settled = this.decline(write, readSettled);
-    // A rejected write leaves the offer to a later frame's retry, as every startup prompt.
-    settled.then(
-      () => {
-        this.appearance = "spent";
-      },
-      () => {
-        this.appearance = "none";
-      },
-    );
+    // Failed writes are retried inside the decline, so no outcome reopens this appearance.
+    const spend = () => {
+      this.appearance = "spent";
+    };
+    settled.then(spend, spend);
     return { outcome: { kind: "attempted", prompt: "auto_mode_setup", input: "esc" }, settled };
   }
 
@@ -104,27 +107,59 @@ export class ClaudeAutoModeOfferDecliner {
     if (frame !== undefined && !isClaudeAutoModeOfferMenu(frame)) this.dismissed = true;
   }
 
-  /** `answered` only once a settled frame shows the menu gone after an Esc went out. */
+  /**
+   * `answered` only once a settled frame shows the menu gone after an Esc went out. A decline
+   * that runs out of Escapes or failures reports nothing: the session stays `blocked` on the
+   * offer's attention label, which leaves it to the human (§5.1). When one of its failures was
+   * a rejected write, that error is its outcome, so a write-failure warning reports it.
+   */
   private async decline(
     write: OfferDeclineWriter,
     readSettled: () => string | undefined,
   ): Promise<StartupWriteCompletion> {
+    let failures = 0;
+    let rejection: { readonly error: unknown } | undefined;
     try {
       for (;;) {
         await waitForInput(this.spacingMs, this.signal);
-        if (this.humanOwned) return "cancelled";
-        const frame = readSettled();
-        if (frame !== undefined && !isClaudeAutoModeOfferMenu(frame))
-          return this.escapes > 0 ? "answered" : "cancelled";
-        // Exhausted attempts report nothing: the session stays `blocked` on the offer's
-        // attention label, which leaves it to the human (§5.1).
-        if (this.escapes === offerDeclineAttempts) return "cancelled";
-        // A withheld Esc stays retryable, so it does not spend the budget (§5.3).
-        if ((await write(declineKey, this.stillDeclinable)) !== "withheld") this.escapes++;
+        const ended = this.check(readSettled());
+        if (ended) return ended;
+        if (this.escapes < offerDeclineAttempts) {
+          const attempt = await this.escape(write);
+          if (attempt === "written") continue;
+          if (attempt !== "withheld") rejection = attempt;
+        }
+        if (++failures < offerDeclineFailures) continue;
+        if (rejection) throw rejection.error;
+        return "cancelled";
       }
     } catch (error) {
       if (this.signal.aborted) return "cancelled";
       throw error;
+    }
+  }
+
+  /** How the decline ends at this check, or undefined to attempt again. */
+  private check(frame: string | undefined): StartupWriteCompletion | undefined {
+    // A dismissal a frame showed wins over everything after it, exhaustion included.
+    if (this.dismissed) return "answered";
+    if (this.humanOwned) return "cancelled";
+    if (frame !== undefined && !isClaudeAutoModeOfferMenu(frame))
+      return this.escapes > 0 ? "answered" : "cancelled";
+    if (this.escapes === offerDeclineAttempts && frame !== undefined) return "cancelled";
+    return undefined;
+  }
+
+  /** One Esc: written, withheld (it never reached the PTY, so it spends no Escape), or rejected. */
+  private async escape(
+    write: OfferDeclineWriter,
+  ): Promise<"written" | "withheld" | { readonly error: unknown }> {
+    try {
+      if ((await write(declineKey, this.stillDeclinable)) === "withheld") return "withheld";
+      this.escapes++;
+      return "written";
+    } catch (error) {
+      return { error };
     }
   }
 }

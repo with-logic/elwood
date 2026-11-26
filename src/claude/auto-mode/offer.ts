@@ -22,30 +22,10 @@ const ruleRow = /^[─━▔]{3,}/;
 /** The dialog's own key-hint row: both the menu's and the setup step's end this way. */
 const cancelHint = /Esc to cancel$/i;
 
-type ReadFrame = { readonly text: string; readonly rows: readonly string[] | undefined };
-
-/**
- * The frame read in the current task. The screen rule and the decliner read each frame in one
- * synchronous callback, so they share one split. A frame's text can hold session content, so
- * it is dropped once that task ends.
- */
-let currentFrame: ReadFrame | undefined;
-const forgetFrame = (): void => {
-  currentFrame = undefined;
-};
-
 /** The offer's rows between its title and its key hint, or undefined when it is not shown. */
 function offerRows(text: string): readonly string[] | undefined {
   // Nearly every frame lacks the title: one substring search, with no split or allocation.
   if (!text.includes(offerTitle)) return undefined;
-  if (currentFrame?.text !== text) {
-    currentFrame = { text, rows: readOfferRows(text) };
-    queueMicrotask(forgetFrame);
-  }
-  return currentFrame.rows;
-}
-
-function readOfferRows(text: string): readonly string[] | undefined {
   const lines = text.split("\n");
   const title = lines.findLastIndex((line) => line.trim() === offerTitle);
   if (title < 1 || !ruleRow.test(lines[title - 1] as string)) return undefined;

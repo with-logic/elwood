@@ -1,8 +1,9 @@
 /**
- * Answers Claude first-party startup prompts that block embedded readiness:
- * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder),
- * the browser-tools prompt and the auto-mode setup offer. Implements PRD §5.1, §5.3,
- * C-CLAUDE-10, C-CLAUDE-11, C-CLAUDE-14, C-CLAUDE-16, C-CLAUDE-26 and C-CLAUDE-27.
+ * Answers Claude first-party prompts that block embedded readiness or later input:
+ * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder), the
+ * browser-tools prompt, and the auto-mode setup offer that can follow a turn.
+ * Implements PRD §5.1, §5.3, C-CLAUDE-10, C-CLAUDE-11, C-CLAUDE-14, C-CLAUDE-16,
+ * C-CLAUDE-22, C-CLAUDE-26 and C-CLAUDE-27.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";
@@ -64,7 +65,7 @@ export class ClaudeStartupPromptResponder {
     this.trust.dispose();
   }
 
-  /** Raw caller input owns the trust gate on screen (C-TRUST-01). */
+  /** Raw caller input owns the trust gate on screen (C-TRUST-01) and the auto-mode offer (C-CLAUDE-27). */
   callerInput(): void {
     const previous = this.trust.humanOwnedPrompt;
     this.trust.callerInput();
@@ -116,7 +117,7 @@ export class ClaudeStartupPromptResponder {
     }
     if (
       !this.browserDeclineLatched &&
-      browserToolsPromptVisible(screenText) &&
+      browserToolsOnly(screenText) &&
       !trustGateVisible(screenText, "claude") // a trust gate is never declined blind (C-TRUST-01)
     ) {
       // Escape is the prompt's documented decline path and needs no option
@@ -127,7 +128,7 @@ export class ClaudeStartupPromptResponder {
       // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
       // so the decline must not claim success: un-latch it and settle as `cancelled`,
       // which emits no activity; a later frame retries only while still live.
-      const writeSettled = Promise.resolve(writeAutomation(declineKey, browserToolsPromptVisible))
+      const writeSettled = Promise.resolve(writeAutomation(declineKey, browserToolsOnly))
         .then((result): StartupWriteCompletion => {
           // Disposal DURING the write wins: the session is gone, so report neither a
           // success activity nor a write-failure warning for it (C-CLAUDE-22).
@@ -181,4 +182,12 @@ export function guardedClaudeAutomationWrite(
 
 export function browserToolsPromptVisible(text: string): boolean {
   return /use my browser/i.test(text) && /keep browser tools off/i.test(text);
+}
+
+/**
+ * The browser-tools decline acts only without the auto-mode menu on the frame, which owns
+ * Escape while it shows: the browser-tools phrases can also appear in the transcript.
+ */
+function browserToolsOnly(text: string): boolean {
+  return browserToolsPromptVisible(text) && !isClaudeAutoModeOfferMenu(text);
 }

@@ -22,7 +22,7 @@ const esc = "\u001b";
 function declining() {
   vi.useFakeTimers();
   const screen = { text: offer, held: undefined as PromiseWithResolvers<void> | undefined };
-  const writes: { readonly input: string; readonly at: number }[] = [];
+  const writes: { readonly input: string; readonly atMs: number }[] = [];
   let settles = 0;
   const write = guardedClaudeAutomationWrite(
     {
@@ -33,18 +33,18 @@ function declining() {
       },
       renderFailed: false,
     },
-    (input) => void writes.push({ input, at: Date.now() }),
+    (input) => void writes.push({ input, atMs: Date.now() }),
     () => screen.text,
   );
   const decliner = new ClaudeAutoModeOfferDecliner(new AbortController().signal);
-  const start = Date.now();
+  const startMs = Date.now();
   const settled = decliner.handle(screen.text, write, () => screen.text)?.settled;
   return {
     screen,
     decliner,
     settled,
     settles: () => settles,
-    escapes: () => writes.map(({ input, at }) => ({ input, ms: at - start })),
+    escapes: () => writes.map(({ input, atMs }) => ({ input, ms: atMs - startMs })),
   };
 }
 

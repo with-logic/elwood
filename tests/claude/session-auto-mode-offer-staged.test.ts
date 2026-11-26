@@ -27,7 +27,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * A 140x40 Claude session, past its readiness hook, that paints `dialog` once `trigger` is
- * written. `painted()` is when the dialog painted, and `firstWrite` when each payload first
+ * written. `painted()` is when the dialog painted, and `firstWriteAtMs` when each payload first
  * went out.
  */
 async function withOfferOn(trigger: string, dialog = offerOnScreen) {
@@ -38,20 +38,21 @@ async function withOfferOn(trigger: string, dialog = offerOnScreen) {
   const pty: FakePty = helper.ptys[0]!;
   await nativeHooks("claude", live, cwd, pty).ready();
   const write = pty.write.bind(pty);
-  const firstWrite = new Map<string, number>();
-  let paintedAt: number | undefined;
+  const firstWriteAtMs = new Map<string, number>();
+  let paintedAtMs: number | undefined;
   pty.write = (data) => {
     write(data);
-    if (typeof data === "string" && !firstWrite.has(data)) firstWrite.set(data, performance.now());
+    if (typeof data === "string" && !firstWriteAtMs.has(data))
+      firstWriteAtMs.set(data, performance.now());
     if (data !== trigger) return;
-    paintedAt = performance.now();
+    paintedAtMs = performance.now();
     pty.emitData(dialog);
   };
-  return { facade, live, pty, firstWrite, painted: () => paintedAt };
+  return { facade, live, pty, firstWriteAtMs, painted: () => paintedAtMs };
 }
 
 test("C-ATTN-09 C-CLAUDE-27 an Enter held behind the offer submits the paste it closed over", async () => {
-  const { facade, live, pty, firstWrite, painted } = await withOfferOn(paste);
+  const { facade, live, pty, firstWriteAtMs, painted } = await withOfferOn(paste);
   try {
     await expect.poll(() => live.status).toBe("ready");
     const declined: unknown[] = [];
@@ -65,13 +66,13 @@ test("C-ATTN-09 C-CLAUDE-27 an Enter held behind the offer submits the paste it 
     // Elwood declines the offer, past its input guard; the composer it closes over still
     // holds the paste, and the held Enter submits it.
     await expect.poll(() => pty.writes, { timeout: 3_000 }).toEqual([paste, esc]);
-    const paintedAt = painted();
-    const declinedAt = firstWrite.get(esc);
-    expect(paintedAt).toBeDefined();
-    expect(declinedAt).toBeDefined();
+    const paintedAtMs = painted();
+    const declinedAtMs = firstWriteAtMs.get(esc);
+    expect(paintedAtMs).toBeDefined();
+    expect(declinedAtMs).toBeDefined();
     // Measured on the monotonic clock. Node timers can fire a millisecond early, so allow a few.
     expect(
-      Number(declinedAt) - Number(paintedAt),
+      Number(declinedAtMs) - Number(paintedAtMs),
       "Elwood's Esc went out past the offer's input guard",
     ).toBeGreaterThanOrEqual(750 - 25);
     expect(declined).toEqual([]);

@@ -10,6 +10,7 @@ import {
 } from "../../src/claude/startup-prompts.ts";
 import type { SettledStartupOutcome } from "../../src/core/startup/write.ts";
 import { claudeTrust } from "../fixtures/trust-composer.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 
 // Captured from a real claude session that wedged an embedded start.
 const browserPrompt = [
@@ -123,4 +124,27 @@ describe("ClaudeStartupPromptResponder", () => {
     expect(writes).toEqual(["1\r"]);
     await drain(retried);
   });
+});
+
+test("C-CLAUDE-27 the browser-tools decline does not act on a frame that shows the auto-mode menu", async () => {
+  // The browser-tools phrases sit in the transcript above the live offer.
+  const frame = `${browserPrompt}\n${capturedFrame("claude-2.1.332/auto-mode-offer")}`;
+  const writes: string[] = [];
+  const responder = new ClaudeStartupPromptResponder(true);
+  const settled = responder.handle(
+    frame,
+    (input) => void writes.push(input),
+    () => frame,
+    (input) => {
+      writes.push(input);
+      return Promise.resolve("written" as const);
+    },
+    () => frame,
+  );
+  expect(outcomesOf(settled)).toEqual([
+    { kind: "attempted", prompt: "auto_mode_setup", input: "esc" },
+  ]);
+  responder.dispose();
+  await drain(settled);
+  expect(writes).toEqual([]);
 });

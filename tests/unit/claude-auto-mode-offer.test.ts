@@ -92,22 +92,3 @@ test("C-ATTN-09 a frame without the offer's title is not split", () => {
   expect(isClaudeAutoModeOfferMenu(composer)).toBe(false);
   expect(split).not.toHaveBeenCalled();
 });
-
-test("C-ATTN-09 the screen rule and the decliner share one split of the same frame", () => {
-  const split = countSplits();
-  // A fresh copy, so no earlier read of the same text is reused.
-  const frame = `${offer}\n`;
-  expect(isClaudeAutoModeOffer(frame)).toBe(true);
-  expect(isClaudeAutoModeOfferMenu(frame)).toBe(true);
-  expect(split).toHaveBeenCalledTimes(1);
-});
-
-test("C-ATTN-09 a frame's text is not kept past the task that read it", async () => {
-  const frame = `${offer}\n\n`;
-  expect(isClaudeAutoModeOffer(frame)).toBe(true);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  const split = countSplits();
-  // Nothing from the earlier task is reused: the same text is read afresh.
-  expect(isClaudeAutoModeOfferMenu(frame)).toBe(true);
-  expect(split).toHaveBeenCalledTimes(1);
-});
