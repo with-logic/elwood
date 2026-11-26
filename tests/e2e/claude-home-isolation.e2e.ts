@@ -29,7 +29,7 @@ import {
 } from "./claude-home.ts";
 import { anthropicCredentialVariables } from "./claude-login.ts";
 import { claudeProjectKeys, projectKeysWithin } from "./claude-projects.ts";
-import { claudeTempFolder, claudeTempFoldersNamed } from "./claude-temp.ts";
+import { assertClaudeTempFolderUnder } from "./claude-temp.ts";
 import { notZsh, useExportingZdotdir } from "./exporting-zdotdir.ts";
 import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
@@ -115,17 +115,7 @@ function privateLoginTest(name: string, skip: string | false, startupLine?: stri
       [],
       "the user's transcript folders never include the scratch project",
     );
-    const tempFolder = claudeTempFolder(cwd);
-    assert.deepEqual(
-      claudeTempFoldersNamed(defaultClaudeTempDir, tempFolder),
-      [tempFolder],
-      "Claude keeps the scratch project's temp folder under the private temp root",
-    );
-    assert.deepEqual(
-      claudeTempFoldersNamed("/tmp", tempFolder),
-      [],
-      "and never under the shared /tmp",
-    );
+    assertClaudeTempFolderUnder(defaultClaudeTempDir, cwd);
   });
 }
 

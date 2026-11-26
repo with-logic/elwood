@@ -39,7 +39,14 @@ test("private process seams pin commands, scrub PTY environment and record both 
       command: "/bin/sh",
       args: ["-lc", "exec claude"],
       cwd: sandbox.cwd,
-      env: { KEEP: "yes", CLAUDECODE: "drop", CLAUDE_CODE_TEST: "drop", ANTHROPIC_API_KEY: "drop" },
+      env: {
+        KEEP: "yes",
+        CLAUDECODE: "drop",
+        CLAUDE_CODE_TEST: "drop",
+        ANTHROPIC_API_KEY: "drop",
+        EDITOR: "code",
+        VISUAL: "code",
+      },
       size: { cols: 80, rows: 24 },
     });
     const options = mocks.pty.mock.calls[0]![0];
@@ -50,6 +57,8 @@ test("private process seams pin commands, scrub PTY environment and record both 
       HOME: sandbox.home,
       CLAUDE_CONFIG_DIR: sandbox.home,
       ZDOTDIR: sandbox.home,
+      // The captured questionnaire footer names this editor, whatever the parent sets.
+      EDITOR: "nvim",
     });
     pty.write("first");
     pty.write(new Uint8Array([66]));

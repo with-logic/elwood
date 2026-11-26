@@ -43,6 +43,19 @@ export const testPick: QuestionDefinition = {
   textMode: "alternative",
   supportsSecretInput: false,
 };
+/** The standalone checkbox in the Claude 2.1.332 captures. */
+export const fruits: QuestionDefinition = {
+  prompt: "Which test fruits?",
+  header: "Fruits",
+  options: [
+    { label: "Apple", description: "Red" },
+    { label: "Banana", description: "Yellow" },
+    { label: "Cherry", description: "Dark" },
+  ],
+  selection: "multiple",
+  textMode: "none",
+  supportsSecretInput: false,
+};
 export function registry() {
   return new QuestionRegistry("claude", "s", { emit: () => {} });
 }
