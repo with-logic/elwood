@@ -47,6 +47,24 @@ const histories: readonly {
     history: `${wrap}\n\n• Working (3s • esc to interrupt)`,
     allowed: false,
   },
+  // Codex 0.172 draws a question it asks as a `? ` cell; 0.163 drew `• `.
+  {
+    name: "question cell",
+    history: `${wrap}\n\n? Which color?\n\n  • Amber\n  • Blue`,
+    allowed: true,
+  },
+  {
+    name: "question cell before reply",
+    history: `${wrap}\n\n? Which color?\n\n  • Amber\n\n• Prior reply`,
+    allowed: true,
+  },
+  {
+    name: "wrapped question cell",
+    history: `${wrap}\n\n? Which size of cluster should I create?\n  Is this for production?\n\n  • Small`,
+    allowed: true,
+  },
+  { name: "question mark without cell", history: `${wrap}\n\n?Which color?`, allowed: false },
+  { name: "bare question mark", history: `${wrap}\n\n?`, allowed: false },
   {
     name: "later menu",
     history: `${wrap}\n\n• Prior reply\n\n› Proceed\n  Cancel`,

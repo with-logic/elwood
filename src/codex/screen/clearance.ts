@@ -1,11 +1,12 @@
 /**
  * Positive Codex composer evidence for trust clearance, staged recovery and empty input.
- * Implements PRD §5.3/§5.4, C-API-31/C-API-56/C-TRUST-01.
+ * Implements PRD §5.3/§5.4, C-API-31/C-API-56/C-TRUST-01/C-ATTN-02.
  */
 
 import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { isTrustDialogHeader } from "../../core/trust/dialog.ts";
 import { classifyCodexFooter, unknownCols } from "./footer.ts";
+import { codexWelcomeBox } from "./welcome.ts";
 import { codexWorkingScreen } from "./working.ts";
 import { isFolderAccessPrelude } from "./workspace-trust-copy.ts";
 
@@ -14,9 +15,11 @@ type ComposerGeometry = { readonly cursorRow?: number; readonly cols?: number | 
 const caretRow = /^\s*[›»]/;
 export const composerRowStart = /^[›»](?:\s|$)/;
 const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
-// A native transcript cell: a reply or tool cell (`• `), or the cell Codex 0.172 draws for a
-// question it asks (`? `; 0.163 drew `• `). The working row shares the bullet but is not one.
-const nativeCell = (row: string): boolean => /^[•?] \S/.test(row) && !codexWorkingScreen.test(row);
+// The first row of a native transcript cell: a reply or tool cell (`• `), or the cell Codex 0.172
+// draws for a question it asks (`? `; 0.163 drew `• `). The working row shares the bullet but is
+// not a cell.
+const startsTranscriptCell = (row: string): boolean =>
+  /^[•?] \S/.test(row) && !codexWorkingScreen.test(row);
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
 export const codexPlaceholders: ReadonlySet<string> = new Set([
   "Ask Codex to do anything",
@@ -29,29 +32,6 @@ export const codexPlaceholders: ReadonlySet<string> = new Set([
   "Run /review on my current changes",
   "Use /skills to list available skills",
 ]);
-/** A contiguous startup welcome box and its native tip/warning rows. */
-function welcomeBox(rows: readonly string[]): boolean {
-  if (!/^╭─+╮$/.test(rows[0] ?? "")) return false;
-  if (!/^│\s*>_ OpenAI Codex \(v[\d.]+\)\s*│$/.test(rows[1] ?? "")) return false;
-  if (!/^│\s*│$/.test(rows[2] ?? "")) return false;
-  if (!/^│ model:\s+\S.*\s+\/model to change\s*│$/.test(rows[3] ?? "")) return false;
-  if (!/^│ directory:\s+\S.*│$/.test(rows[4] ?? "")) return false;
-  if (!/^╰─+╯$/.test(rows[5] ?? "")) return false;
-  let inTip = false;
-  return rows.slice(6).every((row) => {
-    if (row === "") return true;
-    if (/^ {2}Tip: /.test(row)) {
-      inTip = true;
-      return true;
-    }
-    if (/^⚠ /.test(row)) {
-      inTip = false;
-      return true;
-    }
-    return inTip && /^ {2}\S/.test(row);
-  });
-}
-
 function isUserHistoryRow(row: string, rows: readonly string[], index: number): boolean {
   const isPromptRow = /^[›»] \S/.test(row);
   const isNumberedOptionRow = /^[›»] \d+[.)]/.test(row) && numberedSibling(rows, index);
@@ -66,7 +46,7 @@ function unquotedRows(rows: readonly string[], liveCursor: boolean): readonly st
     if (liveCursor && isUserHistoryRow(row, rows, index))
       userEnd = completeUserHistoryEnd(rows, index);
     if (index < userEnd) return "";
-    if (liveCursor && nativeCell(row)) {
+    if (liveCursor && startsTranscriptCell(row)) {
       quoted = true;
       return "";
     }
@@ -76,13 +56,13 @@ function unquotedRows(rows: readonly string[], liveCursor: boolean): readonly st
   });
 }
 
-/** A native cell bounds consecutive user/question-answer echoes, including wrapped text. */
+/** A transcript cell bounds consecutive user/question-answer echoes, including wrapped text. */
 function completeUserHistoryEnd(rows: readonly string[], start: number): number {
   let end = start + 1;
   for (; end < rows.length; end++) {
     const row = rows[end] as string;
     if (row === "" || /^ {2,}\S/.test(row) || isUserHistoryRow(row, rows, end)) continue;
-    return nativeCell(row) ? end : start;
+    return startsTranscriptCell(row) ? end : start;
   }
   return start;
 }
@@ -161,7 +141,8 @@ function nativeComposerRegion(
   const footer = classifyCodexFooter(rows.slice(at + 1), cols);
   if (footer === undefined) return false;
   return (
-    footer.hasStatus || (allowWelcome && welcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
+    footer.hasStatus ||
+    (allowWelcome && codexWelcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
   );
 }
 

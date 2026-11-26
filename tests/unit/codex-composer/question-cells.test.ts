@@ -1,4 +1,4 @@
-/** Codex 0.172 question cells bound the user history above an idle composer (C-ATTN-02). */
+/** Captured Codex 0.172 question cells bound the user history above an idle composer (C-ATTN-02). */
 import { expect, test } from "vitest";
 import { codexComposerRowsClearance } from "../../../src/codex/screen/clearance.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
@@ -11,7 +11,7 @@ import { snapshot } from "../codex-questions/snapshot-fixtures.ts";
 // A queued turn that `gpt-6-luna` ended before its last answer: the prompt, the `? ` cells
 // Codex 0.172 drew for the questions it asked, the answers, the reply and an idle composer.
 const ended = snapshot("turn-ended-question-cells.json", "0.172.0");
-// The same turn a moment earlier, with the remaining queued choice on screen.
+// A queued frame of the same prompt from another 0.172 run, with the remaining choice still open.
 const queued = snapshot("remaining-color-pending-literal.json", "0.172.0");
 
 /** Paint `capture` into a terminal of its size, with its cursor visible where Codex left it. */
@@ -46,16 +46,4 @@ test("C-ATTN-02 a queued panel that ends with its turn clears to the idle compos
   } finally {
     terminal.dispose();
   }
-});
-
-test.each([
-  ["a question cell", "? Which color?\n\n  • Amber\n  • Blue", true],
-  ["a question cell before the reply", "? Which color?\n\n  • Amber\n\n• Done", true],
-  ["a question mark without a cell", "?Which color?", false],
-  ["a bare question mark", "?", false],
-])("C-ATTN-02 a wrapped prompt followed by %s", (_, after, idle) => {
-  const rows = ["› Help me with", "  this codebase", "", ...after.split("\n"), ""];
-  const composer = ["› Ask Codex to do anything", "", "  gpt-5.3-codex high"];
-  const frame = [...rows, ...composer];
-  expect(codexComposerRowsClearance(frame, { cursorRow: rows.length, cols: 80 })).toBe(idle);
 });
