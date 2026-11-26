@@ -35,7 +35,7 @@ back each entry are listed in `prd/14-conformance.md`.
   90 s. Answering a queued Codex choice also no longer fails with
   `question_answer_failed` (`details.category: "adapter"`) when 0.172 leaves its
   hidden cursor after the working row's glyph or elapsed time, or while it still
-  shows the previous answer as waiting to be submitted, at any terminal width.
+  shows the previous answer as waiting to be submitted.
 
 ## [0.8.0] - 2026-11-25
 
