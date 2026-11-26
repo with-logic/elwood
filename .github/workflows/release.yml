@@ -11,8 +11,15 @@ name: Release
 # release. The lightweight tag this workflow pushes on the release commit is
 # reused, and a version this workflow already published from that commit and a
 # published GitHub release are left as they are. Any other tag of that name
-# fails the run. A re-run cannot publish a version older than one already on
-# npm: npm refuses to move `latest` back, so the publish step fails.
+# fails the run. A version that a newer stable, undeprecated one on npm has
+# overtaken when the publish step looks is not published, because it cannot
+# take `latest`: the step fails, naming the newer version. Publish jobs take
+# turns, and the newest GitHub release stays Latest. A tag push, dispatch or
+# re-run runs this file as it is at its commit, and a revision without the
+# publish job's `concurrency` neither waits nor keeps Latest on the newest
+# release: do not run or re-run one. Create a GitHub release it left missing
+# by hand, as the publish step's notes describe. A run of such a revision, like
+# a version published by hand, can land between that look and the upload.
 on:
   push:
     branches: [main]
@@ -181,6 +188,16 @@ jobs:
   publish:
     needs: [resolve, secret-scan]
     if: needs.resolve.outputs.should_release == 'true' && needs.secret-scan.result == 'success'
+    # One publish job at a time, so a run that releases nothing never waits.
+    # npm moves `latest` to whatever version an upload names, and both the
+    # overtaken check and npm's own read the registry before the upload, so
+    # two overlapping jobs could leave `latest` on the older version.
+    # `queue: max` keeps every waiting job, up to 100; by default a newly
+    # queued job cancels the one waiting, which would drop that release.
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
     # macOS: the full check runs the PTY-backed suite, and both adapters
     # reject other platforms at startup.
     runs-on: macos-latest
@@ -260,17 +277,19 @@ jobs:
       # runs tokenlessly through this workflow. Once one has, set
       # NPM_TRUSTED_PUBLISHER_CONFIG_ID below from it.
       #
-      # One lookup reads this version's document from the registry directly,
+      # The step reads this version's document from the registry directly,
       # because `npm view` would redact the configuration ID, as it redacts
       # every UUID-shaped value. Each attempt has 30 seconds, body included,
-      # and reads at most 1 MiB, far more than a version document needs. Like
-      # npm, it retries a connection that fails, times out or is cut off, or
-      # HTTP 408, 429 or 5xx, `fetch-retries` times (2 by default), waiting
-      # `fetch-retry-mintimeout` milliseconds between attempts. The document
-      # records the commit a version was published from as `gitHead`, which
-      # any publisher can set, and, for trusted publishing, the configuration
-      # that published it as `_npmUser.trustedPublisher.oidcConfigId`. The log
-      # prints each of those only in its expected shape.
+      # and reads at most 16 MiB: a version document is a few kilobytes, and
+      # the abbreviated packument read below grows by about 1 KB a version.
+      # Like npm, it retries a connection that fails, times out or is cut
+      # off, or HTTP 408, 429 or 5xx, `fetch-retries` times (2 by default),
+      # waiting `fetch-retry-mintimeout` milliseconds between attempts. The
+      # version document records the commit a version was published from as
+      # `gitHead`, which any publisher can set, and, for trusted publishing,
+      # the configuration that published it as
+      # `_npmUser.trustedPublisher.oidcConfigId`. The log prints each of those
+      # only in its expected shape.
       #
       # NPM_TRUSTED_PUBLISHER_CONFIG_ID is this workflow's configuration, the
       # `oidcConfigId` recorded on every release since 0.2.0. After the trusted
@@ -281,9 +300,14 @@ jobs:
       # under this ID. A re-run runs this file as it was at the release commit,
       # so when that copy names another configuration, a re-run after a
       # successful publish fails here instead of skipping; publish the GitHub
-      # release by hand with `gh release create <tag> --generate-notes`. A
-      # first publish is unaffected.
-      # - Not on npm (404): publish.
+      # release by hand with `gh release create <tag> --generate-notes`,
+      # adding `--latest=false` if a newer release exists. A first publish is
+      # unaffected.
+      # - Not on npm (404): publish, unless the package's abbreviated
+      #   packument, read the same way, has a newer stable version that is not
+      #   deprecated: npm refuses to move `latest` back from one. Then fail,
+      #   naming that version. Elwood ships no backports, so a version a newer
+      #   release overtook is published only by hand, under an explicit `--tag`.
       # - Published by this workflow's trusted publisher from this commit: a
       #   re-run has nothing left to publish.
       # - On npm any other way, including without a recorded commit or
@@ -306,13 +330,20 @@ jobs:
           outcome="$(node --input-type=module -e '
             import { setTimeout as sleep } from "node:timers/promises";
             const [registry, name, version, commit, expectedConfigId, retries, retryDelayMs] = process.argv.slice(1);
-            const url = new URL(`${name.replace("/", "%2f")}/${version}`, registry);
+            const encodedName = name.replace("/", "%2f");
+            const packumentUrl = new URL(encodedName, registry);
+            const versionUrl = new URL(`${encodedName}/${version}`, registry);
             const attemptTimeoutMs = 30_000;
-            const maxDocumentBytes = 1024 * 1024;
+            const maxDocumentBytes = 16 * 1024 * 1024;
+            const semverPattern = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
             const shaped = (value, pattern) => typeof value === "string" && pattern.test(value);
-            /** Reads one answer, body included; throws when the connection fails or times out. */
-            async function attempt() {
-              const response = await fetch(url, { signal: AbortSignal.timeout(attemptTimeoutMs) });
+            /** Reads one answer, with its body only on success; throws when the connection fails or times out. */
+            async function attempt(url, headers) {
+              const response = await fetch(url, { headers, signal: AbortSignal.timeout(attemptTimeoutMs) });
+              if (!response.ok) {
+                await response.body?.cancel().catch(() => undefined);
+                return { status: response.status };
+              }
               const chunks = [];
               let bytes = 0;
               for await (const chunk of response.body) {
@@ -322,9 +353,9 @@ jobs:
               }
               return { status: response.status, text: Buffer.concat(chunks).toString() };
             }
-            async function lookup() {
+            async function lookup(url, headers = {}) {
               for (let retry = 0; ; retry += 1) {
-                const answer = await attempt().catch((error) => ({ error }));
+                const answer = await attempt(url, headers).catch((error) => ({ error }));
                 const connectionFailed = "error" in answer;
                 const statusRetryable = [408, 429].includes(answer.status) || answer.status >= 500;
                 if (!((connectionFailed || statusRetryable) && retry < Number(retries))) {
@@ -345,12 +376,57 @@ jobs:
               if (user instanceof Object) return "another account";
               return "an unrecorded publisher";
             }
+            /** Fetches a registry document, with retries: `missing` for a 404, else the parsed JSON or why the fetch failed. */
+            async function fetchRegistryDocument(url, headers) {
+              try {
+                const answer = await lookup(url, headers);
+                if (answer.status === 404) return { missing: true };
+                if (answer.status < 200 || answer.status > 299) return { failure: `HTTP ${answer.status}` };
+                if (answer.oversized) return { failure: `document over ${maxDocumentBytes} bytes` };
+                return { document: Object(JSON.parse(answer.text)) };
+              } catch (error) {
+                return { failure: error.cause?.code ?? error.name };
+              }
+            }
+            /**
+             * Orders two `semverPattern` matches (groups 1 to 3 are major, minor and
+             * patch, group 4 a prerelease), at least one of them stable: a stable
+             * version follows its own prereleases.
+             */
+            function compareParsedVersions(left, right) {
+              for (const part of [1, 2, 3]) {
+                if (Number(left[part]) !== Number(right[part])) return Number(left[part]) - Number(right[part]);
+              }
+              return Number(!left[4]) - Number(!right[4]);
+            }
+            /** Returns the newest stable, undeprecated version above the one this run releases: npm would not move `latest` back from it. */
+            function newestOvertakingVersion(versions) {
+              const own = semverPattern.exec(version);
+              if (!own) return undefined;
+              let newest;
+              for (const [candidate, manifest] of Object.entries(versions)) {
+                const parts = semverPattern.exec(candidate);
+                if (!parts || parts[4] || manifest?.deprecated) continue;
+                if (compareParsedVersions(parts, own) > 0 && (!newest || compareParsedVersions(parts, newest) > 0)) {
+                  newest = parts;
+                }
+              }
+              return newest?.[0];
+            }
+            async function classifyUnpublished() {
+              const found = await fetchRegistryDocument(packumentUrl, { accept: "application/vnd.npm.install-v1+json" });
+              if (found.failure) return `lookup-failed ${found.failure} reading the packument`;
+              if (found.missing) return "unpublished";
+              const { versions } = found.document;
+              if (!(versions instanceof Object) || Array.isArray(versions)) return "lookup-failed a packument without a versions object";
+              const newer = newestOvertakingVersion(versions);
+              return newer ? `overtaken-by ${newer}` : "unpublished";
+            }
             async function classify() {
-              const answer = await lookup();
-              if (answer.status === 404) return "unpublished";
-              if (answer.status < 200 || answer.status > 299) return `lookup-failed HTTP ${answer.status}`;
-              if (answer.oversized) return `lookup-failed document over ${maxDocumentBytes} bytes`;
-              const manifest = Object(JSON.parse(answer.text));
+              const found = await fetchRegistryDocument(versionUrl);
+              if (found.failure) return `lookup-failed ${found.failure}`;
+              if (found.missing) return classifyUnpublished();
+              const manifest = found.document;
               const user = manifest._npmUser;
               const configId = user?.trustedPublisher?.oidcConfigId;
               if (manifest.gitHead === commit && configId === expectedConfigId) return "published-here";
@@ -363,6 +439,10 @@ jobs:
           case "$outcome" in
             unpublished)
               npm publish --access public
+              ;;
+            "overtaken-by "*)
+              echo "::error::$package is older than ${outcome#overtaken-by }, which is already on npm, so it cannot take the latest dist-tag. To ship it anyway, publish it by hand with an explicit dist-tag: npm publish --access public --tag <tag>"
+              exit 1
               ;;
             published-here)
               echo "This workflow already published $package from $RELEASE_COMMIT; skipping."
@@ -409,6 +489,10 @@ jobs:
               exit 1
             fi
           fi
+      # `legacy` leaves Latest to GitHub, which orders releases by the date of
+      # their commit, then by version. A re-run of this job after a newer
+      # release then leaves that newer release Latest; the default would move
+      # Latest to whichever release this job creates.
       - name: Create GitHub release
         if: steps.existing.outputs.published != 'true'
         uses: softprops/action-gh-release@v2
@@ -416,3 +500,4 @@ jobs:
           tag_name: ${{ needs.resolve.outputs.tag }}
           name: ${{ needs.resolve.outputs.tag }}
           generate_release_notes: true
+          make_latest: legacy

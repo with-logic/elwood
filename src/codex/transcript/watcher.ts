@@ -17,6 +17,7 @@ import {
   newTerminalBudget,
 } from "../../core/transcript/drain.ts";
 import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
+import { recoverFromPollError } from "../../core/transcript/poll-recovery.ts";
 import { CodexLineEmitter, type CodexTranscriptDelivery } from "./emit.ts";
 import { CodexTranscriptFsGuard } from "./fs-guard.ts";
 import type { CodexTranscriptNotices } from "./watcher-config.ts";
@@ -88,7 +89,7 @@ export class CodexTranscriptWatcher {
     this.cursor = cursor;
     // A scan() throw (a throwing drop/activity/warning listener) must not escape the
     // timer as an uncaught exception — contain it, stop, and route a bounded live
-    // diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
+    // diagnostic through the poll recovery both adapters share.
     this.interval = outsideStopInput(() =>
       setInterval(() => this.poll(), this.scanIntervalMs ?? defaultScanIntervalMs),
     );
@@ -101,7 +102,7 @@ export class CodexTranscriptWatcher {
     try {
       this.scan();
     } catch (error) {
-      this.recoverFromPollError(error);
+      recoverFromPollError(this, this.onPollError, error);
     }
   }
 
@@ -149,19 +150,6 @@ export class CodexTranscriptWatcher {
   stop(): void {
     if (this.interval) clearInterval(this.interval);
     this.interval = undefined;
-  }
-
-  // Non-throwing recovery for a failed scan: finish() and the diagnostic can each
-  // throw a listener error (which on the timer path would terminate the host), so
-  // each is contained. finish() already clears the timer in its own `finally`, so a
-  // finish() throw here is simply swallowed — the interval is gone regardless.
-  private recoverFromPollError(error: unknown): void {
-    try {
-      this.finish();
-    } catch {} // finish()'s finally already ran stop(); a drain throw is contained here
-    try {
-      this.onPollError?.(error);
-    } catch {} // a diagnostic listener bug must not resurrect the failure
   }
 
   private drainContext(): DrainContext<BoundedTranscriptCursor> {

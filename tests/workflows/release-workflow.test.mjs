@@ -22,16 +22,38 @@ test("GitHub release creation retries independently of npm publication", () => {
   assert.doesNotMatch(githubRelease, /npm publish/);
 });
 
+// GitHub orders `legacy` releases by commit date, so re-running an older
+// release's job leaves the newest release Latest.
+test("the GitHub release leaves Latest to GitHub's commit-date order", () => {
+  assert.match(
+    job("github-release"),
+    /uses: softprops\/action-gh-release@v2\n {8}with:\n(?: {10}\S.*\n)*? {10}make_latest: legacy\n/u,
+  );
+});
+
+const workflow = readFileSync(
+  new URL("../../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
+
 // The re-run notes sit directly above `on:`; an edit to them must keep every release path.
 test("the release workflow keeps its push, tag and manual triggers", () => {
-  const workflow = readFileSync(
-    new URL("../../.github/workflows/release.yml", import.meta.url),
-    "utf8",
-  );
   assert.match(
     workflow,
     /^on:\n {2}push:\n {4}branches: \[main\]\n {4}tags: \["v\*\.\*\.\*"\]\n {2}workflow_dispatch:\n/mu,
   );
+});
+
+// npm moves `latest` to whatever version an upload names, after checks that
+// read the registry first, so overlapping publish jobs could leave it on the
+// older version; GitHub's default queue would cancel a waiting release. Only
+// the publish job queues, so a run that releases nothing never waits.
+test("publish jobs take turns, keeping every waiting job", () => {
+  assert.match(
+    job("publish"),
+    /^ {4}concurrency:\n {6}group: release-\$\{\{ github\.repository \}\}\n {6}cancel-in-progress: false\n {6}queue: max\n/mu,
+  );
+  assert.doesNotMatch(workflow, /^concurrency:/mu);
 });
 
 // Replays real `gh api` answers for the exact lookup the step makes; any
