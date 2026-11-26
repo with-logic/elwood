@@ -49,6 +49,7 @@ export type ElwoodWarningEvent =
   | lifecycle.TurnCommitWaitExpiredWarning
   | lifecycle.InitialReadyBackstopWarning
   | lifecycle.ClaudeQueuedTurnUnconfirmedWarning
+  | lifecycle.FrameObserverFailedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";

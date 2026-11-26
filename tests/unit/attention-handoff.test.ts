@@ -50,6 +50,7 @@ function harness(started = true) {
       agent: "claude",
       elwoodSessionId: "handoff",
       emitActivity: activity,
+      warnings: { emit() {} },
     },
     () => active,
     () => trust,

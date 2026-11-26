@@ -731,6 +731,21 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
   native binary and field-captured model/effort dialogs.
 
+## Startup screens that show an API key (2026-11-26)
+
+Codex 0.171.0, on a `CODEX_HOME` with no `auth.json`, offers `3. Sign in another
+way`. That opens a submenu whose first choice is an API-key page, which prefills
+`OPENAI_API_KEY` and shows it unmasked. An `OPENAI_API_KEY` that the session's `env`
+overrides still appears there when the launch shell's startup files export it. A probe
+that replaced every character of the key showed it in a one-row bordered field
+(`│sk-…│`), cut at the border at 80 and 120 columns rather than wrapped. No screen
+observed so far wraps a key across rows, so the wrap rules of the `unrecognized_startup`
+redaction (§5.4, C-ATTN-06) are defensive; other widths and later versions were not
+probed. Claude 2.1.332 shows a custom `ANTHROPIC_API_KEY` masked with dots (`sk-ant-...`
+and its last characters) when it asks whether to use it. Elwood recognizes neither
+screen, so a session left on one reaches the initial-readiness backstop, whose activity
+carries the screen redacted. The terminal stream carries it as drawn.
+
 ## Login-shell `CODEX_HOME` (2026-10-25)
 
 Codex runs as `$SHELL -l -i -c 'exec codex …'` (§4.2). The login shell inherits
@@ -2205,6 +2220,28 @@ turn's prompt id, and writes the user record when the hooks finish, about 2.2 s
 later. Codex 0.171.0 lost none of 10 sends of the same paste (4 at 0 ms, 3 at
 200 ms, 3 at 1.5 s) across two concurrent sessions at load 34–38.
 
+### An ergonomic send can finish before Claude draws its empty composer (2.1.332, 2026-11-26)
+
+Claude fires Elwood's `Stop` hook while it still draws the turn as working (`running Stop
+hook · esc to interrupt`). The idle composer follows 20–30 ms later. A `send()` completes as
+soon as the transcript holds the `Stop` text, which was 1 ms to about 550 ms after `ready` in
+these runs. That can come before awaited input sees an empty composer, and in auto mode the
+turn-end hold (C-ATTN-10) arms at the `Stop` and hides that composer from the writer until
+the hold ends. Either way the writer is cancelled while it still owns a draft Claude has
+already taken.
+
+Claude repaints nothing for `^U^K` sent to an empty composer, so no fresh frame can confirm
+that clear. A cancelled draft therefore keeps the writer's own evidence: a frame after its
+latest Enter shows empty input that differs from the empty frame before its paste. When that
+holds at cleanup's safe point, cleanup releases the draft without writing any keys. Without
+that evidence, the next `send()` wrote the keys, waited 1 s and failed with `wait_timeout`
+("Could not clear the staged composer draft."). In auto mode the hold first keeps the screen
+still, so nothing else repaints in that second either. With the auto-mode offer snoozed
+(`autoModeEnvSetup.dismissedAt` seeded), two auto-mode sends failed like this in 4 of 5 runs
+of `auto-mode-sends-claude.e2e.ts` and in 2 of 2 probe runs at load 20–47. C-E2E-14 failed
+the same way; on this machine its session starts in auto mode without asking for it. With the
+evidence kept, the same e2e passed 5 of 5 times at load 9–17.
+
 ## Hook bridge request FIN and delayed decisions
 
 The generated bridge child calls `client.end(request)` after connecting. That FIN
@@ -2780,8 +2817,11 @@ token count and a login-expiry notice. No further valid-model requests were made
 
 The sanitized `working-empty-input.json` fixtures retain these actual completed
 frames and cursor coordinates. Empty-input observers may use this geometry to
-confirm a consumed draft during work. They do not release trust, model-picker, or
-cleanup holds: those retain their stricter idle contract. Replay callers must
+confirm a consumed draft during work. Geometry alone does not release trust,
+model-picker, or cleanup holds: those retain their stricter idle contract. The one
+exception is an awaited draft cancelled after its Enter: cleanup releases it, without
+clear keys, when the writer's own evidence holds (a fresh empty frame after that draft's
+latest Enter, other than the one before its paste; C-API-56). Replay callers must
 also retain their existing dialog-blocking check and require a fresh frame after
 submission; an old empty frame does not prove acceptance.
 
@@ -3920,3 +3960,24 @@ should then clear it was refused, because the prompt with the `? ` cells under i
 an unfinished menu, and `send()` timed out with the session still `blocked`. Elwood now
 accepts `? ` as the start of a transcript cell. Capture:
 `tests/fixtures/codex-0.172.0/questions/turn-ended-question-cells.json`. C-ATTN-02.
+
+**A narrow pane wraps question footers.** Codex 0.172 breaks a footer only between its
+hints. The queued panel's footer is four hints three spaces apart:
+`enter submit   ⌃] skip   ⇧→ main prompt   ⇧← next question` (`⇧→ prev question` after
+the first question; the last question has no `⇧←` hint, and its shorter footer still fits on
+one row at 60 columns). At 60 and 50 columns 0.172 moves `⇧← next question` to a row of its
+own; in a 40-column probe whose frame had not settled it drew `enter submit   ⌃] skip`
+above `⇧→ main prompt   ⇧← next question`. The modal footer's four hints are joined by
+` | ` and, with its two-space indent, need 90 columns. 0.172 fits as many hints on a row as
+it can: at 80 columns it moves `esc to interrupt` to a row of its own, at 60 and 50 it
+splits the footer after `enter to submit answer`, and at 40 it gives each hint a row.
+Elwood read a footer only on one row, so whenever one wrapped it did not recognize the
+question: it did not hold ordinary input for it, and `answerQuestions()` failed. Elwood now
+joins up to four trailing rows with the footer's own separator. Captures in
+`tests/fixtures/codex-0.172.0/questions/`: `queued-footer-*.json` at 60 and 50 columns and
+`modal-footer-wrapped-{80,60,40}.json`. The 50-column modal split was seen in a probe, not
+captured, and the 40-column queued layout is synthesized in
+`tests/unit/codex-questions/narrow-footer.test.ts`. A narrow pane also wraps a modal
+option's description onto a continuation row (at 60 columns and below for the proofs'
+options), which Elwood does not yet match to the question, so such a modal question holds
+input but is not listed. C-ATTN-02, C-QUESTION-04.

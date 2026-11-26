@@ -1,9 +1,10 @@
 /**
  * Connects lifecycle status transitions to the control queue, loops, event
  * delivery, and cleanup (PRD §5.3/§5.9, C-API-42). Status and activity events are
- * emitted here; outside the Claude hook observation boundary, a throwing status
- * listener propagates and `initial_ready` uses its release-and-warn fallback.
- * Hook-scoped capture instead completes the transition and reports C-HOOK-22.
+ * emitted here, and a status listener's exception does not skip the status activity.
+ * Outside the Claude hook observation boundary, that exception then propagates to the
+ * caller. For `initial_ready`, the caller releases the queue and warns instead. Inside
+ * that boundary, hook-scoped capture completes the transition and reports C-HOOK-22.
  * The engine commits its live `current` status BEFORE emitting, so a throw here can
  * never leave the emitted event disagreeing with that live status (§8.2).
  */
@@ -14,6 +15,7 @@ import {
   type ElwoodAgentKind,
 } from "../../core/activity/index.ts";
 import type { CompactEmitter } from "../../core/compact.ts";
+import { runEach } from "../../core/contained.ts";
 import type { ControlQueue } from "../../core/control-queue/index.ts";
 import type { QuestionObservationEmitter } from "../../core/questions/observers.ts";
 import type { TurnBoundaryHook } from "../../core/simple/turn-types.ts";
@@ -75,13 +77,18 @@ export function createSessionStatusEngine(input: StatusWiringInput): SessionStat
   });
 }
 
-/** Deliver status and derived activity; throws propagate outside hook observation scopes. */
+/**
+ * Deliver status and derived activity. A throwing status listener does not skip the
+ * activity; the first failure propagates outside hook observation scopes (C-API-72).
+ */
 export function emitStatusEvents(
   emitter: SessionStatusEmitter,
   agent: ElwoodAgentKind,
   id: string,
   status: ElwoodSessionStatus,
 ): void {
-  emitter.emit("status", { elwoodSessionId: id, status });
-  emitter.emit("activity", activityFromStatus(agent, id, status));
+  runEach(
+    () => emitter.emit("status", { elwoodSessionId: id, status }),
+    () => emitter.emit("activity", activityFromStatus(agent, id, status)),
+  );
 }
