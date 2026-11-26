@@ -66,6 +66,11 @@ export function createStartupReadinessGate(
     if (settled && capture) screen = settled.text;
     return settled;
   };
+  // Readiness reads the last observed frame, which received output not yet rendered can
+  // replace: its composer is evidence only while it is the terminal's settled frame.
+  const rendering = () => terminal !== undefined && settledLiveSnapshot(terminal) === undefined;
+  const current = (frame: string) =>
+    terminal !== undefined && settledLiveSnapshot(terminal)?.text === frame;
   // At the deadline a resize can have reflowed the screen without the CLI repainting it.
   const deadlineFrame = (): SettledFrame | undefined => {
     const settled = terminal && settle(terminal);
@@ -86,7 +91,8 @@ export function createStartupReadinessGate(
     },
     resumed,
     {
-      configured,
+      configured: (frame, cols) => current(frame) && configured(frame, cols),
+      rendering,
       nativeStartupScreen,
       completed: frameCompleted,
       report: (text) =>

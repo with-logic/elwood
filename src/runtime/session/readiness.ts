@@ -91,6 +91,8 @@ export function createReadinessGate(
   composer?: StartupScreenEvidence & {
     /** `recognizedHold`: a recognized dialog or startup automation holds readiness. */
     readonly onBackstop: (recognizedHold: boolean) => void;
+    /** Received output is not rendered yet, so the latest frame may be stale. */
+    readonly rendering: () => boolean;
   },
 ): ReadinessGate {
   let readinessHeld = false;
@@ -148,7 +150,9 @@ export function createReadinessGate(
       readyFired = true;
     },
     undefined,
-    () => readinessHeld,
+    // A mark waits for received output to render, so a frame replacing the last one is
+    // classified first; the next frame retries it (C-API-28).
+    () => readinessHeld || composer?.rendering() === true,
     evidence,
   );
   let configuredComposerSeen = false;
