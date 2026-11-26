@@ -3751,6 +3751,24 @@ test primes its private config with one probe before requiring the served catalo
 a second fallback still fails explicitly. This is test setup for Claude's catalog
 initialization, not a change to which native rows Elwood returns.
 
+### Claude 2.1.332 picker in short panes (2026-11-26)
+
+Claude 2.1.332 sizes the model picker's window to the pane. With the 14-row served
+catalog at 100 columns, every model fit at 30 and 24 rows. At 21 rows and below, a
+window held two items or fewer: at 12 to 14 rows a single model row (`❯ 1.  Default …`
+over `↓ 5 more`), and at 16 to 21 rows the window could end as `↑ 4 more`, `5.  Haiku
+5.5`, `❯ ▸   More models`. Elwood's window parser required two model rows. Until a
+counted marker could vouch for a one-row window, `listModels` and `setModel` timed out
+at 21, 19, 17, 16, 14, 12 and 10 rows. At 30 rows both passed. Each failure left the
+picker open. Cleanup had not recognized its own dialog, so it sent no Escape, and
+queued input stayed held until a human pressed Escape.
+
+At 10 rows the picker's hint row (`s to use this session only · Enter to save · Esc
+to cancel`) falls below the pane. No grammar parses that frame, so `listModels` still
+fails there. Cleanup now closes the picker by ownership instead of recognition, and
+queued input is released. The captures are in
+`tests/fixtures/claude-2.1.332/model-picker/`. C-API-23, C-API-24, C-API-55.
+
 ### Claude 2.1.329 grouped questions (2026-11-20)
 
 In a named 160 × 48 terminal, a grouped checkbox page can show `Next` where

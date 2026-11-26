@@ -1,0 +1,9 @@
+  Select model
+  Your pick is the default for new sessions. For other models, use --model.
+    ↑ 6 more
+  ❯ 6.  Fable 5.1                Most capable for your hardest and longest-running tasks
+    ↓ 8 more
+
+  ● High effort (default) ←/→ to adjust
+
+  s to use this session only · Enter to save · Esc to cancel

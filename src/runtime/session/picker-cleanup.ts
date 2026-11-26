@@ -67,7 +67,8 @@ export async function cleanUpDialog(
   closed: AbortSignal,
 ): Promise<boolean> {
   const terminal = behindReceivedOutputBarrier(source, abortable(source, closed));
-  const isActive = (text: string) => spec.activeDialog(text, ours) !== undefined;
+  const stageOf = (text: string) => spec.activeDialog(text, ours) ?? unparsedPicker(spec, text);
+  const isActive = (text: string) => stageOf(text) !== undefined;
   let escaped = progress.escapeSentTo;
   let clearStreak = 0;
   /** Whether a dialog of ours was ever on screen here; only then can a clear reading lie. */
@@ -76,7 +77,7 @@ export async function cleanUpDialog(
     progress.keyWritten || (progress.commandSubmitted && !progress.dialogSeen);
   try {
     for (const bound = Date.now() + cleanupMs; Date.now() < bound; await delay(pollMs)) {
-      const stage = spec.activeDialog(terminal.snapshot().text, ours);
+      const stage = stageOf(terminal.snapshot().text);
       if (stage === undefined) {
         // ONE clear reading is not proof a dialog we were CANCELLING is gone: a picker
         // repainting between stages is momentarily unrecognizable, and releasing the queue
@@ -118,6 +119,17 @@ export async function cleanUpDialog(
   // `lateDialogPossible` means none ever appeared, so there is nothing to hold.
   return lateDialogPossible;
 }
+/**
+ * Our own picker in a layout the grammar cannot parse: a model-dialog candidate at the
+ * bottom of the screen that is not the caller's dialog. Cleanup runs only for a transaction
+ * that submitted `/model` in its exclusive slot with no caller input since, so ownership,
+ * not recognition, makes it ours. It is the picker stage, owed that stage's one Escape;
+ * otherwise a parse failure would leave the picker open and queued input held (C-API-55).
+ */
+function unparsedPicker(spec: ModelPickerSpec, text: string): ModelDialogStage | undefined {
+  return spec.isCandidate(text) && !spec.isCallerDialog(text) ? "picker" : undefined;
+}
+
 /** Reads and writes throw once `signal` aborts, so nothing reaches a terminated PTY. */
 export function abortable(terminal: ScreenTerminal, signal: AbortSignal): ScreenTerminal {
   return {
