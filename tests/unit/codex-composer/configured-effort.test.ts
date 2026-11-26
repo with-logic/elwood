@@ -15,7 +15,7 @@ test("C-API-28 a requested effort holds readiness until Codex 0.172 shows it on 
   expect(codexComposerConfigured(configured, cols, true)).toBe(true);
 });
 
-test("C-API-28 a resumed Plan-mode effort also shows the configuration landed", () => {
+test("C-API-28 any effort label but default shows the configuration landed", () => {
   const plan = configured.replace(
     /^ {2}GPT-6-Luna low$/m,
     "  GPT-6-Luna medium  Plan mode (⇧tab to cycle)",
