@@ -78,6 +78,13 @@ back each entry are listed in `prd/14-conformance.md`.
   never settled, a content-free `turn_end_hold_expired` warning reports it.
   `elwood run` no longer fails when the offer appears after its prompt's turn
   has ended.
+- Initial readiness waits for PTY output the agent has already sent to render,
+  including an open synchronized update. A repaint still in progress could
+  replace the configured composer Elwood last rendered, and the readiness
+  deadline, Claude's `InstructionsLoaded` hook or Codex's `SessionStart` hook
+  then released queued input onto the screen that replaced it. A hook, deadline
+  or backstop that meets undrawn output now judges the frame it draws, or the
+  last frame if that render fails.
 - The `initial_ready_backstop` `unrecognized_startup` activity now replaces
   `sk-` API-key-shaped tokens in its screen text with `sk-[REDACTED]`, including
   a key wrapped across rows. Each continuing key run becomes `[REDACTED]`, even
