@@ -3,7 +3,7 @@
  * attempts (PRD §5.1, C-CLAUDE-27).
  */
 import { onTestFinished, vi } from "vitest";
-import { offerDeclineSpacingMs } from "../../src/claude/auto-mode/decline.ts";
+import { offerDeclineSpacingMs } from "../../src/claude/auto-mode/appearance.ts";
 
 /** Installs fake timers for the rest of the test and returns the spacing between attempts. */
 export function fakeOfferSpacing(): number {

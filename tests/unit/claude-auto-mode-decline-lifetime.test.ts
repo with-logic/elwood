@@ -5,10 +5,8 @@
  * ends it (PRD §5.1/§5.4, C-CLAUDE-16, C-CLAUDE-22, C-CLAUDE-27).
  */
 import { expect, onTestFinished, test, vi } from "vitest";
-import {
-  ClaudeStartupPromptResponder,
-  guardedClaudeAutomationWrite,
-} from "../../src/claude/startup-prompts.ts";
+import { guardedClaudeAutomationWrite } from "../../src/claude/session/prompt-writers.ts";
+import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import type { ElwoodWarningEvent } from "../../src/core/warnings/index.ts";
