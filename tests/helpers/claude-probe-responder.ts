@@ -6,6 +6,7 @@ import { vi } from "vitest";
 import type { ProbeTrustRefusal } from "../../src/claude/probe-trust.ts";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
+import type { TrustPromptIdFor } from "../../src/core/trust/prompts.ts";
 
 /** A responder with the probe's policy, recording its refusals, writes, and state changes. */
 export function probeResponder(canDiscloseHooks = true) {
@@ -40,7 +41,10 @@ export function probeOutcome(frame: string, canDiscloseHooks = true) {
 }
 
 /** Left to a human: nothing is written, and the refusal is reported once, with `reason`. */
-export const refusedOutcome = (reason: ProbeTrustRefusal, owner = "workspace_trust") => ({
+export const refusedOutcome = (
+  reason: ProbeTrustRefusal,
+  owner: TrustPromptIdFor<"claude"> = "workspace_trust",
+) => ({
   outcomes: [],
   writes: [],
   refusals: [reason],

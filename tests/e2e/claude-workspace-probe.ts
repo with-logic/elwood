@@ -8,6 +8,7 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import type { ProbeRefusalCategory } from "../../src/claude/list-models.ts";
 import { claudeHooksDisclosureVersion } from "../../src/claude/preflight.ts";
 import { compareVersions } from "../../src/core/versions.ts";
 import {
@@ -63,7 +64,7 @@ export async function listedRequest(session: ClaudeSessionApi) {
  */
 export async function assertProbeRefuses(
   project: E2eProject,
-  category: string,
+  category: ProbeRefusalCategory,
   marker?: string,
 ): Promise<void> {
   const refused = await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir }).then(

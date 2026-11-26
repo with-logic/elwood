@@ -78,20 +78,46 @@ test("C-CLAUDE-27 the plain prompt discloses nothing", () => {
   );
 });
 
-test.each([
-  ["the local settings file alone", ".claude/settings.local.json.", "settings"],
-  [
-    "the local settings file and MCP servers",
-    ".claude/settings.local.json and .mcp.json here or above (MCP servers).",
-    "mcp_servers",
-  ],
-] as const)("C-CLAUDE-27 a load row naming %s verifies", (_, items, disclosure) => {
-  const frame = mcpOnly.replace(mcpRow, `Trusting this folder loads ${items}`);
+const S = ".claude/settings.json";
+const L = ".claude/settings.local.json";
+const M = ".mcp.json here or above (MCP servers)";
+const runs = " (runs commands)";
+
+/**
+ * Every load row the grammar accepts, written out rather than generated: the files the hooks
+ * warning names, if any, the row's items, and what the row discloses.
+ */
+const everyLoadRow = [
+  [undefined, M, "mcp_servers"],
+  [undefined, L, "settings"],
+  [undefined, `${L} and ${M}`, "mcp_servers"],
+  [L, `${L}${runs}`, "hooks"],
+  [L, `${L}${runs} and ${M}`, "hooks"],
+  [undefined, S, "settings"],
+  [undefined, `${S} and ${M}`, "mcp_servers"],
+  [undefined, `${S} and ${L}`, "settings"],
+  [undefined, `${S}, ${L}, and ${M}`, "mcp_servers"],
+  [L, `${S} and ${L}${runs}`, "hooks"],
+  [L, `${S}, ${L}${runs}, and ${M}`, "hooks"],
+  [S, `${S}${runs}`, "hooks"],
+  [S, `${S}${runs} and ${M}`, "hooks"],
+  [S, `${S}${runs} and ${L}`, "hooks"],
+  [S, `${S}${runs}, ${L}, and ${M}`, "hooks"],
+  [`${S} and ${L}`, `${S}${runs} and ${L}${runs}`, "hooks"],
+  [`${S} and ${L}`, `${S}${runs}, ${L}${runs}, and ${M}`, "hooks"],
+] as const;
+
+test.each(
+  everyLoadRow,
+)("C-CLAUDE-27 a load row warning about %s and naming %s verifies", (warned, items, disclosure) => {
+  const load = `Trusting this folder loads ${items}.`;
+  const warning = `⚠ This folder configures hooks that can run commands without asking, declared in ${warned}`;
+  const frame = mcpOnly.replace(mcpRow, warned === undefined ? load : `${warning}\n\n ${load}`);
   const view = trustView(frame, "claude", claudeTrustClearance);
   expect(view).toMatchObject({ kind: "candidate", valid: true });
-  expect(view.kind === "candidate" && claudeWorkspaceStrongestDisclosure(view.dialog.header)).toBe(
-    disclosure,
-  );
+  const header = view.kind === "candidate" ? view.dialog.header : "";
+  expect(claudeWorkspaceStrongestDisclosure(header)).toBe(disclosure);
+  expect(claudeWorkspaceDisclosesHooks(header)).toBe(disclosure === "hooks");
 });
 
 test("C-CLAUDE-27 a settings file that sets environment variables fails closed", () => {

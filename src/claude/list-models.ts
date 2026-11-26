@@ -51,7 +51,7 @@ export function listClaudeModels(options: ListModelsOptions): Promise<readonly A
 }
 
 /** What in the folder the probe declined to trust, or that it could not verify the prompt (§10). */
-type ProbeRefusalCategory =
+export type ProbeRefusalCategory =
   | "workspace_hooks"
   | "workspace_mcp_servers"
   | "workspace_settings"

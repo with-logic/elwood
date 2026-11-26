@@ -14,6 +14,9 @@ import {
 import { resetFakes } from "./helpers.ts";
 import { probeEnd, probeShown, refused } from "./probe-trust-helpers.ts";
 
+// Taken before any test fakes the clock, to bound a wait in real time.
+const realSetTimeout = globalThis.setTimeout;
+
 afterEach(() => {
   vi.useRealTimers();
   resetFakes();
@@ -66,21 +69,24 @@ test.each([
 });
 
 test("C-CLAUDE-27 the probe refuses a workspace prompt it cannot verify once its budget runs out", async () => {
-  // Faked once the probe has spawned, so its five-second trust budget passes at once.
-  const beforeShow = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  // Faked once the probe has spawned, so its five-second trust budget passes at once. After that
+  // the faked clock keeps pace with real time, so the probe's teardown runs as it would.
+  const beforeShow = () =>
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
   const shown = await probeShown("2.1.332", (cwd) => atLaunchPath(claudeSettingsEnvPrompt, cwd), {
     beforeShow,
   });
   const ending = probeEnd(shown);
-  let ended = false;
-  void ending.finally(() => {
-    ended = true;
-  });
-  // The budget, then the teardown the refusal starts, each on the faked clock.
-  for (let step = 0; !ended && step < 100; step += 1) {
+  for (let elapsed = 0; elapsed <= gateBudgetMs; elapsed += gateBudgetMs / 10) {
     await vi.advanceTimersByTimeAsync(gateBudgetMs / 10);
   }
-  const end = await ending;
+  // A probe that did not refuse is still in its 60 s readiness wait, so bound the teardown in
+  // real time, well inside the test's own timeout.
+  const outlasted = new Promise<"outlasted">((resolve) => {
+    realSetTimeout(() => resolve("outlasted"), 5_000).unref();
+  });
+  const end = await Promise.race([ending, outlasted]);
+  if (end === "outlasted") expect.fail("the probe refused once its trust budget ran out");
   expect(end).toEqual(
     refused(/^Elwood cannot verify Claude's workspace trust prompt/, "workspace_unverified"),
   );

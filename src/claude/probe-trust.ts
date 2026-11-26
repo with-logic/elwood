@@ -39,7 +39,7 @@ export type ProbeTrustOptions = {
 };
 
 /** The policy as the trust responder applies it: each frame's view, then each state change. */
-export type ProbeTrustPolicy = {
+type ProbeTrustPolicy = {
   /** Leaves a prompt the probe must not answer to a human and reports why. */
   readonly claim: (view: TrustView) => boolean;
   /** Refuses a painted workspace prompt that never verified before its trust budget ran out. */

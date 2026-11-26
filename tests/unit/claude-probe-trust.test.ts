@@ -38,7 +38,7 @@ test.each(
   expect(probeOutcome(frame)).toEqual(refusedOutcome(disclosureRefusals[disclosure]));
 });
 
-test.each([
+const extensionPrompts = [
   ["the MCP server", claudeMcpServerPrompt, "mcp_server_prompt", "mcp_trust"],
   [
     "a plugin",
@@ -47,10 +47,14 @@ test.each([
     "plugin_trust",
   ],
   ["a skill", "Load this skill?\n1. Yes, load this skill\n2. No", "skill_prompt", "skill_trust"],
-] as const)("C-CLAUDE-27 the probe refuses Claude's prompt for %s", (_, frame, reason, owner) => {
-  for (const canDiscloseHooks of [true, false]) {
-    expect(probeOutcome(frame, canDiscloseHooks)).toEqual(refusedOutcome(reason, owner));
-  }
+] as const;
+
+test.each(
+  extensionPrompts.flatMap(([name, ...prompt]) =>
+    [true, false].map((canDisclose) => [name, canDisclose, ...prompt] as const),
+  ),
+)("C-CLAUDE-27 the probe refuses Claude's prompt for %s (can disclose: %s)", (_, canDisclose, frame, reason, owner) => {
+  expect(probeOutcome(frame, canDisclose)).toEqual(refusedOutcome(reason, owner));
 });
 
 test.each([

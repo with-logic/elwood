@@ -27,15 +27,17 @@ const ableTo = String.raw`Claude Code'll be able to read, edit, and execute file
 // these combinations verify. A file marked as running commands that the warning does not
 // name, either hooks row alone, or any other annotation or warning is unknown prose and fails
 // closed.
-type FileLoad = "absent" | "loads" | "runs";
-/** How each of `settingsFiles` appears in a load row, in its order. */
-type SettingsLoads = readonly [settings: FileLoad, local: FileLoad];
-type LoadDisclosure = { readonly settingsLoads: SettingsLoads; readonly mcpServers: boolean };
-const fileLoads: readonly FileLoad[] = ["absent", "loads", "runs"];
+const fileLoads = ["absent", "loads", "runs"] as const;
+type FileLoad = (typeof fileLoads)[number];
 const settingsFiles = [
   String.raw`\.claude/settings\.json`,
   String.raw`\.claude/settings\.local\.json`,
 ] as const;
+/** A `V` for each of `T`'s entries, so the tuple grows with `T`. */
+type EachOf<T extends readonly unknown[], V> = { readonly [entry in keyof T]: V };
+/** How each of `settingsFiles` appears in a load row, in its order. */
+type SettingsLoads = EachOf<typeof settingsFiles, FileLoad>;
+type LoadDisclosure = { readonly settingsLoads: SettingsLoads; readonly mcpServers: boolean };
 const mcpServersItem = String.raw`\.mcp\.json here or above \(MCP servers\)`;
 const loadDisclosures: readonly LoadDisclosure[] = fileLoads
   .flatMap((settings) => fileLoads.map((local): SettingsLoads => [settings, local]))
@@ -50,18 +52,19 @@ export const claudeWorkspaceDescription = new RegExp(
   `^(?:${likeYourOwn}\\s*(?:${ableToRows})?|${ableToRows})(?:Security guide)?$`,
 );
 
+// The first that applies wins, so a row naming several reports the most consequential (§5.3),
+// and `settings`, which every load row matches, means settings files with neither of the others.
+const disclosureOrder = ["hooks", "mcp_servers", "settings"] as const;
 /** What a verified load row says trusting the folder loads. */
-export type ClaudeWorkspaceDisclosure = "hooks" | "mcp_servers" | "settings";
+export type ClaudeWorkspaceDisclosure = (typeof disclosureOrder)[number];
 const hooksRows = new RegExp(
   rowsPattern(loadDisclosures.filter(({ settingsLoads }) => settingsLoads.includes("runs"))),
 );
-// The first match wins, so a row naming several reports the most consequential (§5.3), and
-// `settings`, which every load row matches, means settings files with neither of the others.
-const disclosurePatterns: readonly (readonly [ClaudeWorkspaceDisclosure, RegExp])[] = [
-  ["hooks", hooksRows],
-  ["mcp_servers", new RegExp(rowsPattern(loadDisclosures.filter(({ mcpServers }) => mcpServers)))],
-  ["settings", new RegExp(loadRows)],
-];
+const disclosurePatterns: Readonly<Record<ClaudeWorkspaceDisclosure, RegExp>> = {
+  hooks: hooksRows,
+  mcp_servers: new RegExp(rowsPattern(loadDisclosures.filter(({ mcpServers }) => mcpServers))),
+  settings: new RegExp(loadRows),
+};
 
 /**
  * The most consequential thing verified Claude workspace copy says trusting the folder loads:
@@ -71,7 +74,7 @@ const disclosurePatterns: readonly (readonly [ClaudeWorkspaceDisclosure, RegExp]
 export function claudeWorkspaceStrongestDisclosure(
   copy: string,
 ): ClaudeWorkspaceDisclosure | undefined {
-  return disclosurePatterns.find(([, pattern]) => pattern.test(copy))?.[0];
+  return disclosureOrder.find((disclosure) => disclosurePatterns[disclosure].test(copy));
 }
 
 /** Whether verified Claude workspace copy discloses hooks, which trusting the folder runs. */

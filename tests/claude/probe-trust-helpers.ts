@@ -5,6 +5,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect } from "vitest";
+import type { ProbeRefusalCategory } from "../../src/claude/list-models.ts";
 import { listClaudeModels } from "../../src/index.ts";
 import { type CommandRunner, setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import {
@@ -62,7 +63,7 @@ export async function probeEnd({ listing, pty, stateDir }: ProbeShown) {
 }
 
 /** Rejected with `category` and `reason`, nothing answered, and nothing left behind. */
-export const refused = (reason: RegExp, category = "workspace_hooks") => ({
+export const refused = (reason: RegExp, category: ProbeRefusalCategory = "workspace_hooks") => ({
   error: expect.objectContaining({
     code: "claude_start_failed",
     message: expect.stringMatching(reason),
