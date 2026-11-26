@@ -14,7 +14,8 @@ export function isString(value: unknown): value is string {
 }
 
 export function isStringArray(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every(isString);
+  // `every` skips a sparse array's holes; `Array.from` reads each one as undefined.
+  return Array.isArray(value) && Array.from(value).every(isString);
 }
 
 export function optionalString(value: unknown): boolean {

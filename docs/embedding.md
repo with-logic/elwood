@@ -239,7 +239,10 @@ reasoning effort the session requested 50 seconds after launch, or by the deadli
 that came later, so from then on readiness counted the footer alone. A default 60-second
 `waitForStatus` sees that `ready` when Codex drew its first frame within 40 seconds of
 launch and no startup dialog held it. A mode or model picked right after `ready` can then
-be discarded when Codex applies its configuration.
+be discarded when Codex applies its configuration. `codex_effort_unrecognized` means the
+last `model_reasoning_effort` entry in `configOverrides` sets an effort Elwood does not
+read, such as a string with escapes, or one Codex does not know. Codex still receives it,
+but `ready` does not wait for Codex to apply it.
 Recognized update menus are safely skipped or reported as `blocked` with
 `codex-update-prompt` attention. Elwood never chooses `Update now` in the TUI.
 

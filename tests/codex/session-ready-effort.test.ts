@@ -5,17 +5,17 @@
  * `waitForStatus` can expire (PRD §5.3, §5.7, C-API-28).
  */
 import { afterEach, expect, test, vi } from "vitest";
-import { resumeCodex, startCodex } from "../../src/index.ts";
+import type { StartCodexOptions } from "../../src/index.ts";
 import {
   deadlineOnDefaultFooter,
   effortDefault,
   effortLow,
-  initialSize,
   paint,
   paste,
+  resumeWithQueuedMessage,
   sentinel,
 } from "./effort-footer.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { resetFakes } from "./helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -23,17 +23,28 @@ afterEach(() => {
   resetFakes();
 });
 
-test("C-API-28 a requested effort holds ready until Codex shows it", async () => {
-  const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter({
-    reasoningEffort: "low",
-  });
+/** The two routes by which a launch requests the effort `low`. */
+const lowRoutes = [
+  { route: "reasoningEffort", options: { reasoningEffort: "low" } },
+  { route: "configOverrides", options: { configOverrides: ["model_reasoning_effort=low"] } },
+] as const;
+
+test.each(
+  lowRoutes,
+)("C-API-28 holds ready for the effort requested via $route until Codex shows it", async ({
+  options,
+}) => {
+  const { session, warnings, activities, queued, waited, pty } =
+    await deadlineOnDefaultFooter(options);
   try {
     // Past the deadline, the footer waiting for the effort is Codex's own startup screen.
     expect(session.status).not.toBe("blocked");
+    expect(session.status).not.toBe("ready");
     expect(activities.some(({ kind }) => kind === "unrecognized_startup")).toBe(false);
     expect(pty.writes).not.toContain(paste);
     pty.emitData(paint(effortLow));
     await vi.advanceTimersByTimeAsync(500);
+    expect(await waited).toBe("ready");
     await queued;
     expect(pty.writes).toContain(paste);
     expect(warnings).toEqual([]);
@@ -43,11 +54,16 @@ test("C-API-28 a requested effort holds ready until Codex shows it", async () =>
   }
 });
 
-test.each([
+test.each<{ readonly label: string; readonly options: Partial<StartCodexOptions> }>([
   { label: "no effort", options: {} },
   {
-    label: "an effort only in configOverrides",
-    options: { configOverrides: ["model_reasoning_effort=low"] },
+    label: "reasoningEffort none over a configOverrides effort",
+    options: { reasoningEffort: "none", configOverrides: ["model_reasoning_effort=low"] },
+  },
+  {
+    // Codex 0.172 ignores this key even with the profile selected (docs/cli-behavior.md).
+    label: "only the selected profile's effort in configOverrides",
+    options: { profile: "fast", configOverrides: ['profiles.fast.model_reasoning_effort="low"'] },
   },
 ])("C-API-28 with $label the deadline marks ready on the default footer", async ({ options }) => {
   const { session, warnings, queued, pty } = await deadlineOnDefaultFooter(options);
@@ -116,28 +132,18 @@ test.each([
   }
 });
 
-test("C-API-28 a resume that requests an effort waits for Codex to show it", async () => {
-  const cwd = tempDir();
-  installFakes();
-  const first = await startCodex({ cwd });
-  await becomeReady(first.elwoodSessionId, cwd);
-  await first.stop();
-  const elwoodSessionId = first.elwoodSessionId;
-  const resumed = await resumeCodex({ cwd, elwoodSessionId, initialSize, reasoningEffort: "low" });
-  const queued = resumed.sendMessage("after configuration");
-  void queued.catch(() => undefined);
-  const render = async (frame: string) => {
-    ptys[1]!.emitData(paint(frame));
-    await resumed.terminal.settled();
-    await new Promise((resolve) => setImmediate(resolve));
-  };
+test.each(lowRoutes)("C-API-28 a resume waits for the effort requested via $route", async ({
+  options,
+}) => {
+  const { resumed, queued, ready, render, pty } = await resumeWithQueuedMessage(options);
   try {
     await render(effortDefault);
     expect(resumed.status).not.toBe("ready");
-    expect(ptys[1]!.writes).not.toContain(paste);
+    expect(pty.writes).not.toContain(paste);
     await render(effortLow);
+    expect(await ready).toBe("ready");
     await queued;
-    expect(ptys[1]!.writes).toContain(paste);
+    expect(pty.writes).toContain(paste);
   } finally {
     await resumed.teardown();
   }

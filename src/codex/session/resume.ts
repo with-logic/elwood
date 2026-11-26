@@ -19,6 +19,7 @@ import {
   withCodexLaunch,
 } from "../../state/launch-posture.ts";
 import { defaultStateDir, readSessionRecord, sessionDir } from "../../state/store.ts";
+import { validateConfigOverrides } from "../config/overrides.ts";
 import * as preflight from "../preflight.ts";
 import { startCodexFromRecord } from "./index.ts";
 import type { CodexSessionApi, ResumeCodexOptions } from "./types.ts";
@@ -27,6 +28,8 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
   // `highTrust` expands to its explicit posture override (or rejects a conflicting
   // explicit one) before anything else, exactly as on start (C-API-54).
   const options = applyCodexHighTrust(snapshotEnvironment(rawOptions));
+  // Readiness reads it after the PTY spawns; a bad shape must fail before anything runs.
+  validateConfigOverrides(options.configOverrides);
   // Resolve stateDir to ABSOLUTE ONCE, before any read/await, so a `process.chdir()`
   // between the record read and the runtime-file writes can't split them (§8.1).
   const stateDir = canonicalStatePath(
