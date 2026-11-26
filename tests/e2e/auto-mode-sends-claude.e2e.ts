@@ -3,7 +3,8 @@
  * the turns run. The first send completes on its `Stop` and transcript while Claude still
  * draws the turn as working, so its writer is cancelled with the draft already taken. The
  * turn-end hold then keeps the screen still, and clear keys sent to the idle composer would
- * repaint nothing. The second send must submit and answer from the first turn's context.
+ * repaint nothing. The second send must submit its own turn and answer from the first turn's
+ * context, with an answer the first reply does not contain.
  * Implements C-API-56 and C-ATTN-10 (PRD §5.3, §5.8).
  */
 
@@ -36,21 +37,23 @@ test("C-API-56 C-ATTN-10 a second ClaudeSession.send follows an auto-mode turn",
     initialSize: { cols: 140, rows: 40 },
   });
   const offered: string[] = [];
+  const submitted: string[] = [];
   session.on("activity", (event) => {
     if (event.kind === "attention" && event.label === claudeAutoModeOfferRuleId)
       offered.push(event.label);
+    if (event.kind === "user_message" && event.source === "hook") submitted.push(event.text);
   });
+  const secondPrompt = "Add 25 to the number I asked you to remember. Reply with only the sum.";
   try {
     const first = await session.send(
-      "My favorite animal is the axolotl. Reply with just one short sentence acknowledging that.",
+      "Remember the number 17 for my next message. Reply with only the word OK.",
       { timeoutMs: 90_000 },
     );
     assert.ok(first.trim().length > 0, "the first send returns assistant text");
-    const second = await session.send(
-      "What did I say my favorite animal was? Answer with just the animal name.",
-      { timeoutMs: 90_000 },
-    );
-    assert.match(second.toLowerCase(), /axolotl/, "the second turn retains first-turn context");
+    assert.doesNotMatch(first, /42/, "the first reply cannot satisfy the second turn's check");
+    const second = await session.send(secondPrompt, { timeoutMs: 90_000 });
+    assert.ok(submitted.includes(secondPrompt), "Claude's UserPromptSubmit saw the second send");
+    assert.match(second, /\b42\b/, "the second turn answers from first-turn context");
     assert.ok(!writes.includes(composerClearKeys), "no clear keys went to the composer");
     assert.deepEqual(offered, [], "the snoozed offer did not show");
     assert.equal(offerSetupState()?.["dismissedAt"], dismissedAt, "the snooze stayed as seeded");

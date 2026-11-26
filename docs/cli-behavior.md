@@ -2775,8 +2775,11 @@ token count and a login-expiry notice. No further valid-model requests were made
 
 The sanitized `working-empty-input.json` fixtures retain these actual completed
 frames and cursor coordinates. Empty-input observers may use this geometry to
-confirm a consumed draft during work. They do not release trust, model-picker, or
-cleanup holds: those retain their stricter idle contract. Replay callers must
+confirm a consumed draft during work. Geometry alone does not release trust,
+model-picker, or cleanup holds: those retain their stricter idle contract. The one
+exception is an awaited draft cancelled after its Enter: cleanup releases it, without
+clear keys, when the writer's own evidence holds (a fresh empty frame after that draft's
+latest Enter, other than the one before its paste; C-API-56). Replay callers must
 also retain their existing dialog-blocking check and require a fresh frame after
 submission; an old empty frame does not prove acceptance.
 

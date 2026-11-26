@@ -20,12 +20,12 @@ import { waitFor } from "./wait-for.ts";
  * (`dismissedAt`); see `docs/cli-behavior.md`. Seed this process's private config, and
  * replace `autoModeEnvSetup` outright so that an earlier test's dismissal is cleared too.
  */
-export function seedOffer(setup: Record<string, unknown> = {}): void {
+export function seedOffer(snooze: { readonly dismissedAt?: number } = {}): void {
   const path = configPath();
   const config = readConfig();
   const prior = config["numStartups"];
   const numStartups = Math.max(typeof prior === "number" ? prior : 0, 5);
-  const seeded = { ...config, numStartups, autoModeEnvSetup: { denials: 5, ...setup } };
+  const seeded = { ...config, numStartups, autoModeEnvSetup: { ...snooze, denials: 5 } };
   writeFileSync(path, JSON.stringify(seeded), { mode: 0o600 });
 }
 

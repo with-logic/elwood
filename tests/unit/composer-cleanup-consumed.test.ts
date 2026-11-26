@@ -10,16 +10,17 @@ import {
   requestComposerCleanup,
   stageComposer,
 } from "../../src/core/input/composer-cleanup.ts";
+import { writeQueuedInput } from "../../src/core/input/index.ts";
 
 afterEach(() => vi.useRealTimers());
 
 const clearKeys = "\u0015\u000b";
 
 /** An owner whose composer stays on one empty frame, so a clear key repaints nothing. */
-function setup() {
+function setup(sendInput: (data: string) => Promise<void> | void = vi.fn()) {
   vi.useFakeTimers();
   let held = false;
-  const terminal = { sendInput: vi.fn(), settled: () => Promise.resolve() };
+  const terminal = { sendInput, settled: () => Promise.resolve() };
   const lifetime = new AbortController();
   const onCleared = vi.fn();
   const frame = {};
@@ -92,5 +93,37 @@ test.each([
   await vi.advanceTimersByTimeAsync(1_001);
   await successor;
   expect(work).not.toHaveBeenCalled();
+  expect(onCleared).not.toHaveBeenCalled();
+});
+
+test("C-API-56 a draft whose awaited Enter write was rejected still needs observed clear keys", async () => {
+  let revision = 0;
+  let empty = {};
+  const sendInput = vi.fn((data: string) => {
+    if (data !== "\r") return Promise.resolve();
+    // Output renders fresh empty input, but this Enter never reached the composer.
+    revision += 1;
+    empty = {};
+    return Promise.reject(new Error("Enter rejected"));
+  });
+  const { terminal, owner, lifetime, onCleared } = setup(sendInput);
+  const guard = {
+    prepareStaged: () => () => false,
+    emptyFrame: () => empty,
+    captureRenderProgress: () => {
+      const captured = revision;
+      return () => revision > captured;
+    },
+  };
+  const failed = owner
+    .run(
+      () => writeQueuedInput(terminal, "hello", "awaited_input", guard, lifetime.signal),
+      lifetime.signal,
+    )
+    .catch((error: unknown) => error);
+  await vi.advanceTimersByTimeAsync(2_000);
+  await failed;
+  expect(sendInput).toHaveBeenCalledWith("\r");
+  expect(sendInput).toHaveBeenLastCalledWith(clearKeys);
   expect(onCleared).not.toHaveBeenCalled();
 });
