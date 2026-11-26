@@ -17,22 +17,22 @@ import type { ReadErrorReporter } from "./drops.ts";
  * is swallowed content-free instead.
  */
 export class TranscriptFsGuard {
-  private readonly readErrors: ReadErrorReporter | undefined;
+  private readonly readErrors: ReadErrorReporter;
   private readonly isFinished: () => boolean;
 
-  /** Without `readErrors`, failures are contained and left for another read to report. */
-  constructor(readErrors: ReadErrorReporter | undefined, isFinished: () => boolean) {
+  constructor(readErrors: ReadErrorReporter, isFinished: () => boolean) {
     this.readErrors = readErrors;
     this.isFinished = isFinished;
   }
 
   // Contains a sync read failure (never crashes the timer/hook dispatch) and
-  // records a bounded diagnostic so a persistent fault stays visible (§5.4).
-  read<T>(path: string, read: () => T): T | undefined {
+  // records a bounded diagnostic so a persistent fault stays visible (§5.4). A held
+  // `Stop`'s extra reads pass `report: false`: the poll reports the same fault (§6.5).
+  read<T>(path: string, read: () => T, report = true): T | undefined {
     try {
       return read();
     } catch (error) {
-      this.readErrors?.record(path, error);
+      if (report) this.readErrors.record(path, error);
       return undefined;
     }
   }
@@ -44,7 +44,7 @@ export class TranscriptFsGuard {
     try {
       return await read();
     } catch (error) {
-      if (!this.isFinished()) this.readErrors?.record(path, error);
+      if (!this.isFinished()) this.readErrors.record(path, error);
       return false;
     }
   }
