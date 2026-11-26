@@ -12,7 +12,7 @@ import {
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
 import { blankOrPendingMessages } from "./native-pending.ts";
-import { nativeSelection } from "./selection.ts";
+import { foldOptionRows, nativeSelection } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
 export type QuestionView = {
@@ -150,9 +150,10 @@ export function matchesQuestion(view: QuestionView, question: QuestionDefinition
   const start = afterPrompt.findIndex((line) => line.length > 0);
   const block = afterPrompt.slice(start);
   const end = block.findIndex((line) => line.length === 0);
-  const rows = (end < 0 ? block : block.slice(0, end)).map((line) =>
-    /^(?:› )?(\d+)\. (.*)$/.exec(line),
-  );
+  const options = end < 0 ? block : block.slice(0, end);
+  const first = view.body.indexOf(question.prompt) + 1 + start;
+  const drawn = view.rawBody.slice(first, first + options.length);
+  const rows = foldOptionRows(options, drawn).map((line) => /^(?:› )?(\d+)\. (.*)$/.exec(line));
   const editingOther =
     view.kind === "queued" &&
     view.selected === question.options.length &&
