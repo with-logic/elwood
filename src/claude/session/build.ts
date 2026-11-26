@@ -7,7 +7,7 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
-import { withAutomatedInput } from "../../runtime/session/session-input.ts";
+import { stagedInputPending, withAutomatedInput } from "../../runtime/session/session-input.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
 import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
@@ -16,7 +16,7 @@ import { secureMkdir } from "../../state/files.ts";
 import { writeSessionRecord } from "../../state/store.ts";
 import { settledLiveSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
-import { liveClaudeIdleComposer } from "../composer/idle.ts";
+import { liveClaudeAttentionClearance, liveClaudeIdleComposer } from "../composer/idle.ts";
 import { LoginExpiringWatcher } from "../login/renewal.ts";
 import { preflightEvent } from "../preflight.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
@@ -112,7 +112,7 @@ export async function buildClaudeSession(
     () => session,
     () => promptResponder,
     readiness,
-    idleComposerClearance,
+    liveClaudeAttentionClearance(idleComposerClearance, () => terminal, stagedInputPending),
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,

@@ -1,5 +1,13 @@
-/** Claude staged text and image chips count only inside the live idle composer (PRD §5.3). */
-import { readStagedComposer } from "../../core/input/staged-composer.ts";
+/**
+ * Claude staged text and image chips count only inside the live idle composer (PRD §5.3).
+ * A staged draft in that composer is also attention clearance (C-ATTN-02, C-ATTN-09).
+ */
+import {
+  readCandidateComposerFrame,
+  readStagedComposer,
+  readStagedComposerFrame,
+} from "../../core/input/staged-composer.ts";
+import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { claudeScreenFactTable } from "../screen-table.ts";
 import { claudeEmptyInputFrame, claudeEmptyInputRows } from "./empty-input.ts";
@@ -17,6 +25,22 @@ export function claudeInputStaged(terminal: ElwoodTerminal): boolean {
     readStagedComposer(terminal, matchesEmptyInputWithStagedFooter, claudeScreenFactTable, "❯ ") ??
       "",
   );
+}
+
+/**
+ * True when `text` is the live frame and it shows Claude's verified composer holding a
+ * staged draft, text or pill, with no dialog or working indicator. A paste written just
+ * before a dialog painted is still staged when the dialog closes, so this frame, not an
+ * empty composer, is what lets that paste's held Enter submit it.
+ */
+export function claudeStagedComposerClearance(readTerminal: () => ElwoodTerminal): TrustClearance {
+  return (text) => {
+    const current = readCandidateComposerFrame(readTerminal(), claudeScreenFactTable);
+    return (
+      current?.frame.text === text &&
+      readStagedComposerFrame(current, matchesEmptyInputWithStagedFooter, "❯ ") !== undefined
+    );
+  };
 }
 
 export function createClaudeRecoveryComposer(terminal: ElwoodTerminal) {

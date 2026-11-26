@@ -1999,6 +1999,144 @@ Further detail from real 2.1.332 sessions in a private config dir (2026-11-24):
   Only the fullwidth `＜` was run as a stand-in for `<`, so a prompt using another `<`
   look-alike character may still not match its own hook.
 
+### Claude's auto-mode setup offer takes a post-turn paste (2.1.332, 2026-11-25)
+
+In auto mode, Claude 2.1.332 can paint `Teach auto mode about your environment?`
+38–287 ms after a turn's `Stop` in six probes, with the longer gaps at load
+averages of 100–360. It sits under a column-0 `─` rule, next to a composer
+that stays visible: copy, a `❯ 1. Yes` / `2. Not now` / `3. Don't show again`
+menu, and `Enter to confirm · Esc to cancel`. The hardware cursor sits on the
+menu's caret row. In the fixture the offer is above the composer
+(`tests/fixtures/claude-2.1.332/auto-mode-offer.txt`); one probe painted it
+below. The binary shows the offer once Claude has started at least five times
+and auto mode has denied at least five actions (`autoModeEnvSetup.denials` in
+`.claude.json`). It skips the offer when settings already hold an
+`autoMode.environment`, after "Don't show again" (`dismissed`), or less than 7
+days after an Esc (`dismissedAt`). An account flag can also turn it off.
+
+Before C-ATTN-09, Elwood stayed `ready` under the offer. A `sendMessage` 1.5 s
+after `ready` resolved, but its Enter answered `1. Yes`. That opened a setup step
+under a `▔` rule (`How you use Claude here`, `Also scan shell history  on`,
+`Also scan your other repos  off`, `Continue`, then `↑/↓ to navigate · Space to
+toggle · Esc to cancel`) in place of the composer
+(`tests/fixtures/claude-2.1.332/auto-mode-setup-step.txt`). The message never
+reached `UserPromptSubmit` or the transcript, and Elwood stayed `running`. A space
+key on the first menu changed nothing. Now the offer is a blocking dialog: the
+session goes `ready` → `blocked`, the paste waits, and after Esc it submits as a
+turn about 250 ms later (`tests/e2e/auto-mode-offer-claude.e2e.ts`). Later steps
+after `Continue` (a background scan, then `Review proposed auto-mode setup`) use
+other titles and were not captured.
+
+Before the turn-end hold (C-ATTN-10, below), a message queued during the turn
+went out the moment Elwood reported `ready` on its own `Stop` hook, so its paste
+landed in Claude's composer before the offer painted. Six such probes had three
+outcomes:
+
+- The offer painted before the Enter, 150 ms after the paste (2 of 6, one pill
+  and one inline). The Enter was held. Esc left the paste staged in the composer
+  with the cursor after it (`offer-closed-staged.json`). While its Enter is
+  still held, Elwood now accepts that composer as clearance, and the held Enter
+  submitted the message.
+- The Enter reached the composer before Claude mounted the offer (1 of 6,
+  inline). The message submitted, and the offer appeared after the next turn.
+- Claude had mounted the offer but not painted it when the Enter arrived (3 of 6,
+  all pills, at load averages of 100–360). The Enter answered it (`❯ 1. Yes ✔`),
+  and the offer painted 70–136 ms later. The paste stayed staged and was never
+  submitted. Elwood's Enter has already gone out, so the draft Esc leaves is not
+  clearance and the session stays `blocked` until the composer is empty. Elwood
+  cannot see the offer before it paints, so C-ATTN-09 does not cover this;
+  C-ATTN-10, below, does.
+
+The binary explains the third case. At the end of a query Claude runs
+`if (shouldOffer) this.offerEnvOnboarding(); ... this.resetLoadingState()`.
+`offerEnvOnboarding` sets `envOnboardingOffered` synchronously, so the offer
+mounts in the same tick that clears the loading state and takes keys from then
+on. Ink paints both changes in one later frame. Elwood's `Stop` hook has already
+reported `ready` before that frame, so a queued message's paste and Enter went
+out to a mounted offer that Elwood could not see yet. A frame probe
+(load averages 35–62) showed the order every time: the title switches to `✳`
+27–30 ms after `Stop` while the footer still reads `esc to interrupt`, and the
+first frame without that footer, 35–48 ms after `Stop`, already holds the offer.
+The raw bytes agree (load average 14): 15 ms after `Stop`, one 733-byte chunk
+repainted top-down, from the `✻ Baked for 1s` row through the offer's rule,
+title, menu and hint to the composer, and only then erased ` · esc to
+interrupt` from the footer. The predicate in front of `offerEnvOnboarding` is
+`rJe`, which requires `toolPermissionContext.mode === "auto"` at that moment, so
+only a turn that ends in auto mode can mount the offer.
+
+A first hold released on the first frame without the working footer. That frame
+already held the offer in every capture, but only because of that paint order: a
+blank, partial or offer-less frame would have released it too. So Elwood now
+holds every queued write, after a turn that ends in auto mode, until a frame
+showing Claude's verified composer with no working indicator and no dialog has
+stayed unchanged for 500 ms, capped at 5 s from the turn's end (C-ATTN-10). The
+hold is armed by the `Stop` hook or the rendered end before either reports
+`ready`, and stays through a dialog whose dismissal ended the turn. It covers
+widths at which the offer's title fits on one row, so that Elwood recognizes
+the offer (C-ATTN-09); the working footer no longer matters. The title row,
+with its two-column indent, is 41 columns wide. At 46 and 60 columns, below the
+footer's elision, the offer painted with its title and hint on one row each,
+and the live at-ready run below passed at both (load averages 47 and 103).
+
+`tests/e2e/auto-mode-offer-prepaint-claude.e2e.ts` reproduces the case on
+demand by holding Elwood's view of the PTY for 1.5 s from `Stop`. With the
+first hold it passed: exactly one submission, no `Yes ✔`, and Esc's
+`dismissedAt` recorded (21 s, load average 35). With the hold removed it failed:
+the queued message was never submitted (load average 31).
+`tests/e2e/auto-mode-offer-at-ready-claude.e2e.ts` sends from the status
+listener at the turn's `ready` instead, once with Elwood's view held back and
+once at live speed with a status listener that throws there. On `origin/main`
+both runs lost the message (load average 38). With the stable-frame hold both
+runs passed in each of nine runs of the file, at load averages 4–362. They passed
+on the first hold too (load average 15).
+
+The offer ignores a choice, Enter on its menu or Esc, made less than 500 ms
+after its first render or after the previous attempt, and every attempt,
+ignored or not, restarts that window (`z5e = 500` in `J3`). That is why an Esc
+sent as soon as the title appeared, below, did nothing. Its options: `Yes` clears `autoModeEnvSetup` and opens setup; `Not now`, which
+Esc also selects, stamps `autoModeEnvSetup.dismissedAt` and suppresses the offer
+for 7 days; `Don't show again` sets `dismissed: true`.
+
+A paste typed during the turn shows the same shape on demand
+(`tests/e2e/auto-mode-offer-draft-claude.e2e.ts`). Claude paints the offer
+above the composer that holds the pill, with the hardware cursor on the menu.
+Twice, an Esc sent as soon as the offer's title appeared was ignored: the offer
+was still there 15 s later. An Esc sent 1.5 s after the title closed it, leaving
+the pill in the composer that Elwood's staged-input check accepts, and Enter
+then submitted it. Load averages were 33–85.
+
+The paste has to wait until Claude has taken the turn's prompt.
+`sendMessage` resolves once its Enter is written, and Claude can still show
+the prompt in its composer at that moment: it did in all four captures. One run
+that pasted then (load average 60) found the composer empty after Esc, with the
+pill gone and never submitted. The test now waits for the prompt's
+`UserPromptSubmit` and the working footer first, and passed three times out of
+three at load averages 50–71.
+
+A `Plugins changed. Run /reload-plugins to activate.` notice can sit under the
+composer's footer for about 4 s after a startup `ConfigChange`. The composer
+check does not accept that row, so clearance waited until the notice went away.
+
+A headless `elwood run --claude-permission-mode auto` sees the offer too: it
+painted after the prompt's turn reached `ready` in 4 of 6 runs, before the stream
+ended. One run before the §12A.2 exception failed as `blocked_prompt`. In the
+committed C-CLI-05 run without the exception, the `blocked` status came 20 ms
+after the prompt's `ready`, and the run failed the same way.
+
+### Claude queues a send made while user Stop hooks run (2.1.332, 2026-11-25)
+
+Without the offer, no `sendMessage` was lost. The probes sent a 6-line,
+492-character paste (a pill) in named bypass-mode sessions, at delays of 0,
+200 ms and 1.5 s after `ready`, interleaved: 5 of 5 and 6 of 6 sends on one
+session, and 24 of 24 across four concurrent sessions. A slow user `Stop` hook
+(3–4 s) keeps Claude in `running Stop hooks…` after Elwood's own `Stop` hook has
+reported `ready`. A send in that window is not lost. Claude queues it (`❯ Press
+up to edit queued messages`, a `queue-operation` `enqueue` record holding the
+text), fires `UserPromptSubmit` about 100–300 ms after Enter with the previous
+turn's prompt id, and writes the user record when the hooks finish, about 2.2 s
+later. Codex 0.171.0 lost none of 10 sends of the same paste (4 at 0 ms, 3 at
+200 ms, 3 at 1.5 s) across two concurrent sessions at load 34–38.
+
 ## Hook bridge request FIN and delayed decisions
 
 The generated bridge child calls `client.end(request)` after connecting. That FIN
