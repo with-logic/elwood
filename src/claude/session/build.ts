@@ -118,7 +118,7 @@ export async function buildClaudeSession(
     () => dialogs.reconcileAfter(frameObserver.refresh),
     idleComposerClearance,
     dialogs.onWorkspaceTrustTakeover,
-    options.onDeclaredHooksRefused,
+    options.probeTrust,
   );
   let latestRenderedText = "";
   const loginExpiring = new LoginExpiringWatcher();

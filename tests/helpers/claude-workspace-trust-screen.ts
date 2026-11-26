@@ -1,6 +1,6 @@
 /**
  * Captured Claude workspace disclosures, replayed at the test's launch path, and the rows
- * Claude 2.1.332 adds for a folder whose settings declare hooks (C-ATTN-07, C-CLAUDE-26).
+ * Claude 2.1.329 and later add for a folder whose settings declare hooks (C-ATTN-07, C-CLAUDE-26).
  */
 import { capturedFrame } from "./captured-frames.ts";
 
@@ -14,6 +14,17 @@ export const claudeHooksPrompt = {
   wide: capturedFrame("claude-2.1.332/trust/workspace-hooks-120"),
   wrapped: capturedFrame("claude-2.1.332/trust/workspace-hooks-100"),
 } as const;
+
+/** The same captures for hooks in `.claude/settings.local.json`, and in both settings files. */
+export const claudeHooksPromptCaptures = (["local", "both"] as const).flatMap((files) =>
+  ([120, 100] as const).map(
+    (cols) =>
+      [
+        `${files} at ${cols} columns`,
+        capturedFrame(`claude-2.1.332/trust/workspace-hooks-${files}-${cols}`),
+      ] as const,
+  ),
+);
 
 /** Moves a hooks prompt's caret to "Yes": only its "No, exit" frame was captured. */
 export function selectClaudeHooksYes(screen: string): string {

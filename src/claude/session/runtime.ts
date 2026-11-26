@@ -29,17 +29,15 @@ import { buildClaudeShellCommand, shellLaunch } from "../command.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
+import type { ProbeWorkspaceTrust } from "../startup-prompts.ts";
 import type { ClaudeLaunchTrustEvidence } from "../workspace-trust/target.ts";
 
 /** The environment snapshot and directory identity captured before this launch's preflight. */
 export type ClaudeLaunchOptions = StartClaudeOptions & {
   readonly env: ChildEnvironment;
   readonly launchDirectory: CheckedLaunchDirectory;
-  /**
-   * Internal, set only by `listClaudeModels`: when present, automatic trust refuses a
-   * workspace prompt that says the folder declares hooks, and this is called (§5.3).
-   */
-  readonly onDeclaredHooksRefused?: (() => void) | undefined;
+  /** Internal, set only by `listClaudeModels`: its workspace trust policy (§5.3). */
+  readonly probeTrust?: ProbeWorkspaceTrust | undefined;
 };
 
 export type BuildClaudeSessionInput = {

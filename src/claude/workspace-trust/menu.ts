@@ -4,7 +4,7 @@ import type { WorkspaceTrustFacts } from "../../core/dialogs/types.ts";
 import { workspaceTrustMenuIdentity } from "../../core/dialogs/workspace-trust-request.ts";
 import type { SelectableOption } from "../../core/terminal-options.ts";
 import { isClaudeWorkspaceQuestionPrefix } from "../../core/trust/allowlist.ts";
-import { claudeWorkspaceDeclaresHooks } from "../../core/trust/copy.ts";
+import { claudeWorkspaceDisclosesHooks } from "../../core/trust/copy.ts";
 import { hasTrustConversationBefore } from "../../core/trust/dialog.ts";
 import { type TrustCandidate, trustView } from "../../core/trust/view.ts";
 import type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "../../terminal/headless.ts";
@@ -58,7 +58,7 @@ export function createClaudeWorkspaceTrustMenuMatcher(scope: ClaudeLaunchTrustEv
       promptHeaderKey: candidate.key,
       target: { targetPath, targetScope },
       // The copy is verified by now, so the hooks rows can only be the native pair (§5.4).
-      facts: { targetDeclaresHooks: claudeWorkspaceDeclaresHooks(candidate.dialog.header) },
+      facts: { disclosesHooks: claudeWorkspaceDisclosesHooks(candidate.dialog.header) },
       dialog: candidate.dialog,
     };
   };

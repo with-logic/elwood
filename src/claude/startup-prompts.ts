@@ -14,13 +14,23 @@ import {
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
-import { claudeWorkspaceDeclaresHooks } from "../core/trust/copy.ts";
+import { claudeWorkspaceDisclosesHooks } from "../core/trust/copy.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { TrustView } from "../core/trust/view.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
 // The prompt's documented decline keystroke (ESC).
 const declineKey = "\u001b";
+
+/**
+ * The model probe's workspace trust policy (§5.3). Its automatic trust never approves a
+ * workspace prompt for a folder whose hooks could run: one that discloses hooks or, from a
+ * Claude that cannot disclose them (`hooksDisclosed: false`), any workspace prompt at all.
+ */
+export type ProbeWorkspaceTrust = {
+  readonly hooksDisclosed: boolean;
+  readonly onRefused: () => void;
+};
 
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
@@ -33,12 +43,12 @@ export class ClaudeStartupPromptResponder {
     onStateChange?: () => void,
     clearance: TrustClearance = claudeTrustClearance,
     onWorkspaceTrustTakeover?: () => void,
-    onDeclaredHooksRefused?: () => void,
+    probeTrust?: ProbeWorkspaceTrust,
   ) {
     this.onWorkspaceTrustTakeover = onWorkspaceTrustTakeover;
     this.trust = new TrustPromptResponder("claude", clearance, autotrust, {
       onStateChange,
-      claimCallerOwnership: onDeclaredHooksRefused && refuseDeclaredHooks(onDeclaredHooksRefused),
+      claimCallerOwnership: probeTrust && refuseProbeTrust(probeTrust),
     });
   }
 
@@ -167,16 +177,19 @@ export function guardedClaudeAutomationWrite(
 }
 
 /**
- * Leaves a verified workspace prompt that says the folder declares hooks to a human, so
- * automatic trust never runs those hooks, and reports each frame that shows it (§5.3).
+ * Leaves a verified workspace prompt the probe must not trust to a human, so automatic trust
+ * never runs the folder's hooks, and reports each frame that shows it (§5.3).
  */
-function refuseDeclaredHooks(onRefused: () => void): (view: TrustView) => boolean {
+function refuseProbeTrust({
+  hooksDisclosed,
+  onRefused,
+}: ProbeWorkspaceTrust): (view: TrustView) => boolean {
   return (view) => {
     const refused =
       view.kind === "candidate" &&
       view.valid &&
       view.spec.id === "workspace_trust" &&
-      claudeWorkspaceDeclaresHooks(view.dialog.header);
+      (!hooksDisclosed || claudeWorkspaceDisclosesHooks(view.dialog.header));
     if (refused) onRefused();
     return refused;
   };

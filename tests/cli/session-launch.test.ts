@@ -141,6 +141,20 @@ describe("CLI adapter launch mapping", () => {
     });
   });
 
+  // `--trust` is the caller's own automatic trust, so it approves Claude's hooks prompt too
+  // (§12A.2); only the model probe passes `startClaudeWithId` a policy that refuses it.
+  test.each([
+    ["claude", "startClaude"],
+    ["codex", "startCodex"],
+  ] as const)("C-CLI-05 --trust starts %s with autotrust on", async (agent, start) => {
+    const h = harness();
+    const launch = createCliLaunch(request(agent, { trust: true }), "trusted", h.dependencies);
+    await expect(launch()).rejects.toThrow(start);
+    expect(h.calls).toEqual([
+      { name: start, id: "trusted", options: expect.objectContaining({ autotrust: true }) },
+    ]);
+  });
+
   test("C-CLI-06 new launches supply defaults and omit an absent model and effort", async () => {
     const claude = harness();
     const { permissionMode: _permission, ...claudeRequest } = request("claude");

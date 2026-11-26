@@ -1,7 +1,7 @@
 /** Shared workspace trust menu identity and request snapshots (PRD §5.13, C-ATTN-07, C-CLAUDE-26). */
 import { randomUUID } from "node:crypto";
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import type { ElwoodDialogRequest, WorkspaceTrustFacts, WorkspaceTrustTarget } from "./types.ts";
+import type { AgentDialogRequest, WorkspaceTrustFacts, WorkspaceTrustTarget } from "./types.ts";
 
 export type WorkspaceTrustMenu<Agent extends ElwoodAgentKind = ElwoodAgentKind> = {
   readonly target: WorkspaceTrustTarget;
@@ -26,7 +26,7 @@ export function createWorkspaceTrustRequest<Agent extends ElwoodAgentKind>(
   agent: Agent,
   elwoodSessionId: string,
   { target, facts, dialog }: WorkspaceTrustMenu<Agent>,
-): ElwoodDialogRequest<Agent> {
+): AgentDialogRequest<Agent> {
   // Object.assign keeps the agent-specific facts as an intersection the compiler can
   // check; a literal spread or `Object.freeze`'s `Readonly<>` of them does not narrow.
   const request = Object.assign(

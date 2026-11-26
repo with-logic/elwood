@@ -60,6 +60,21 @@ describe("ElwoodAgentSession", () => {
     >();
   });
 
+  test("C-CLAUDE-26 narrowing a shared request's agent exposes only Claude's hooks disclosure", () => {
+    type Shared = ElwoodDialogRequest<"claude" | "codex">;
+    expectTypeOf<Extract<Shared, { readonly agent: "claude" }>>().toEqualTypeOf<
+      ElwoodDialogRequest<"claude">
+    >();
+    expectTypeOf<Extract<Shared, { readonly agent: "claude" }>["disclosesHooks"]>().toBeBoolean();
+    expectTypeOf<Extract<Shared, { readonly agent: "codex" }>>().not.toHaveProperty(
+      "disclosesHooks",
+    );
+    // Narrowing in code compiles only because the shared request is a discriminated union.
+    const disclosure = (request: Shared) =>
+      request.agent === "claude" ? request.disclosesHooks : undefined;
+    expectTypeOf(disclosure).returns.toEqualTypeOf<boolean | undefined>();
+  });
+
   test("C-API-27 both adapters satisfy the common session type", async () => {
     const cwd = tempDir();
     installClaudeFakes();

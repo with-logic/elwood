@@ -17,20 +17,34 @@ export const noTrustDescription = /^$/;
 // proves the native body; 2.1.206 omits ", or work from your team".
 const likeYourOwn = String.raw`\(Like your own code, a well-known open source project(?:, or work from your team)?\)\. If not, take a moment to review what's in this folder first\.`;
 const ableTo = String.raw`Claude Code'll be able to read, edit, and execute files here\.`;
-// 2.1.332 adds this pair after `ableTo` when the folder's `.claude/settings.json` declares
-// hooks. Only the pair, in order, counts: either row alone is unknown prose and fails closed.
-const hooksWarning = String.raw`⚠ This folder configures hooks that can run commands without asking, declared in \.claude/settings\.json`;
-const settingsLoad = String.raw`Trusting this folder loads \.claude/settings\.json \(runs commands\)\.`;
-const hooksRows = `${hooksWarning}\\s*${settingsLoad}`;
+// Claude that discloses hooks adds this pair after `ableTo` when the folder's project settings
+// configure commands that trusting runs (hooks, or a status line command). Both rows name the
+// same files: `.claude/settings.json`, `.claude/settings.local.json`, or both, in that order,
+// joined by "and". Only the pair, in order, counts: either row alone, or rows naming different
+// files, is unknown prose and fails closed.
+const hooksFiles = [
+  [String.raw`\.claude/settings\.json`],
+  [String.raw`\.claude/settings\.local\.json`],
+  [String.raw`\.claude/settings\.json`, String.raw`\.claude/settings\.local\.json`],
+];
+const hooksRows = `(?:${hooksFiles.map(hooksRowsNaming).join("|")})`;
 const ableToRows = `${ableTo}\\s*(?:${hooksRows}\\s*)?`;
 export const claudeWorkspaceDescription = new RegExp(
   `^(?:${likeYourOwn}\\s*(?:${ableToRows})?|${ableToRows})(?:Security guide)?$`,
 );
 const hooksRowsPattern = new RegExp(hooksRows);
 
-/** Whether verified Claude workspace copy says the folder declares hooks that trusting runs. */
-export function claudeWorkspaceDeclaresHooks(copy: string): boolean {
+/** Whether verified Claude workspace copy discloses hooks, which trusting the folder runs. */
+export function claudeWorkspaceDisclosesHooks(copy: string): boolean {
   return hooksRowsPattern.test(copy);
+}
+
+/** The warning and load rows for hooks declared in `files`, each an escaped path. */
+function hooksRowsNaming(files: readonly string[]): string {
+  const warning = `⚠ This folder configures hooks that can run commands without asking, declared in ${files.join(" and ")}`;
+  const loads = files.map((file) => String.raw`${file} \(runs commands\)`);
+  const load = `Trusting this folder loads ${loads.join(" and ")}\\.`;
+  return `${warning}\\s*${load}`;
 }
 
 // 2.1.268 shows the first sentence and the acceptance; 2.1.310 adds the sandbox sentence

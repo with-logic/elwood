@@ -808,14 +808,27 @@ across physical rows** on a narrow terminal. Its option format is version-couple
   dialog waiting. From 2.1.310 evidence, never do that with a relative arrow and a
   separate Enter (see "Claude trust selection reset" below).
 
-**Claude 2.1.332 adds two rows for a folder whose settings declare hooks.** When the
-project's `.claude/settings.json` declares hooks, the prompt shows
+**Claude 2.1.329 and later disclose a folder's hooks on the workspace prompt.** When
+the project's `.claude/settings.json` declares hooks, the prompt shows
 `⚠ This folder configures hooks that can run commands without asking, declared in
 .claude/settings.json` and `Trusting this folder loads .claude/settings.json (runs
 commands).` between `Claude Code'll be able to read, edit, and execute files here.` and
 `Security guide`, with the cursor on `No, exit`. At Elwood's 100-column startup minimum
 the first row wraps before `.claude/settings.json`; at 120 columns it fits on one row
-(`tests/fixtures/claude-2.1.332/trust/workspace-hooks-*.txt`). Accepting runs the
+(`tests/fixtures/claude-2.1.332/trust/workspace-hooks-*.txt`). Hooks in
+`.claude/settings.local.json` draw the same rows naming that file. Hooks in both files
+draw `declared in .claude/settings.json and .claude/settings.local.json` and `loads
+.claude/settings.json (runs commands) and .claude/settings.local.json (runs
+commands).` A status line command alone, with no hooks, draws the `.claude/settings.json`
+rows too, and trusting the folder runs it. Hooks in a Git repository root's
+`.claude/settings.json` draw no rows for a launch from a subdirectory, and they do not
+run there once that launch is trusted: Claude reads project settings from the launch
+directory only. Earlier versions do not disclose hooks (2026-11-26, a `SessionStart`
+hook in `.claude/settings.json`, untrusted scratch projects in a private config dir):
+2.1.144, 2.1.231, 2.1.290, 2.1.310 and 2.1.322 draw the plain prompt; 2.1.326 through 2.1.328 draw the
+load row alone, which Elwood does not verify, so it holds that prompt; 2.1.331 and
+2.1.332 draw both rows. That is why the model probe refuses every workspace prompt
+from a Claude older than 2.1.329 (§5.3). Accepting runs the
 project's hooks: a `SessionStart` hook ran as the trusted session started. Before
 C-CLAUDE-26 made the exact pair native copy, Elwood failed closed on it, so
 `autotrust: true` left such a session `blocked`. C-E2E-23's isolation test timed out

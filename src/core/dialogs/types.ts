@@ -16,15 +16,16 @@ export type WorkspaceTrustTarget = {
 export type WorkspaceTrustFacts<Agent extends ElwoodAgentKind> = Agent extends "claude"
   ? {
       /**
-       * Claude's prompt showed its hooks rows: trusting the folder runs the hooks its
-       * `.claude/settings.json` declares. `false` only means no such rows were shown;
-       * Claude before 2.1.332 never shows them (§5.13, C-CLAUDE-26).
+       * Claude's prompt disclosed hooks: trusting the folder runs commands its project
+       * settings configure. `false` only means the prompt disclosed none, never that the
+       * folder has no hooks (§5.13, C-CLAUDE-26).
        */
-      readonly targetDeclaresHooks: boolean;
+      readonly disclosesHooks: boolean;
     }
   : Record<never, never>;
 
-export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> = WorkspaceTrustTarget &
+/** One agent's request. Internal code that is generic over the agent builds and holds this. */
+export type AgentDialogRequest<Agent extends ElwoodAgentKind> = WorkspaceTrustTarget &
   WorkspaceTrustFacts<Agent> & {
     readonly id: string;
     readonly elwoodSessionId: string;
@@ -34,6 +35,13 @@ export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> = Works
     readonly text: string;
     readonly choices: readonly ElwoodDialogChoice[];
   };
+
+/**
+ * A workspace trust request, distributed over `Agent`: for `ElwoodAgentKind` it is a union
+ * that narrowing `agent` to `"claude"` resolves to the Claude request, with `disclosesHooks`.
+ */
+export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> =
+  Agent extends ElwoodAgentKind ? AgentDialogRequest<Agent> : never;
 
 export type ElwoodDialogEvent<Agent extends ElwoodAgentKind = "codex"> = {
   readonly request: ElwoodDialogRequest<Agent>;

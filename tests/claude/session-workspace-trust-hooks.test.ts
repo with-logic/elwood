@@ -1,6 +1,6 @@
 /**
- * Claude 2.1.332's workspace prompt for a folder whose settings declare hooks is listed with
- * `targetDeclaresHooks` and answered like the plain prompt; altered hooks rows are not
+ * Claude's workspace prompt that discloses a folder's hooks (captured from 2.1.332) is listed
+ * with `disclosesHooks` and answered like the plain prompt; altered hooks rows are not
  * listed (PRD §5.4, §5.13, C-CLAUDE-26).
  */
 import { expect, test, vi } from "vitest";
@@ -28,7 +28,7 @@ test("C-CLAUDE-26 Claude lists the hooks prompt as declaring hooks and answers i
     label: "workspace_trust",
     targetPath: cwd,
     targetScope: "folder",
-    targetDeclaresHooks: true,
+    disclosesHooks: true,
     text: folded,
     choices: [
       { id: expect.any(String), label: "No, exit" },
@@ -56,7 +56,5 @@ test("C-CLAUDE-26 a hooks prompt with an unknown row is not listed", async () =>
   await render(tty(altered));
   expect(await session.listDialogs()).toEqual([]);
   await render(tty(claudeWorkspaceTrustScreen(cwd, "no", "hooks")));
-  expect(await session.listDialogs()).toEqual([
-    expect.objectContaining({ targetDeclaresHooks: true }),
-  ]);
+  expect(await session.listDialogs()).toEqual([expect.objectContaining({ disclosesHooks: true })]);
 });

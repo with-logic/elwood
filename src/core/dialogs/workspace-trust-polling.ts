@@ -4,12 +4,12 @@ import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.t
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { boundedTrustEvidence } from "../trust/evidence-deadline.ts";
 import type { TrustPromptId } from "../trust/prompts.ts";
-import type { ElwoodDialogRequest } from "./types.ts";
+import type { AgentDialogRequest } from "./types.ts";
 import { createWorkspaceTrustRequest, type WorkspaceTrustMenu } from "./workspace-trust-request.ts";
 
 export type VerifiedWorkspaceTrust<Agent extends ElwoodAgentKind> = {
   readonly frame: TerminalSnapshot;
-  readonly request: ElwoodDialogRequest<Agent>;
+  readonly request: AgentDialogRequest<Agent>;
 };
 
 type Checked<Agent extends ElwoodAgentKind> = VerifiedWorkspaceTrust<Agent> | undefined;
@@ -36,7 +36,7 @@ export class WorkspaceTrustPolling<
     | { readonly frame: TerminalSnapshot; readonly candidate: Candidate | undefined }
     | undefined;
   private open:
-    | { readonly identity: string; readonly request: ElwoodDialogRequest<Agent> }
+    | { readonly identity: string; readonly request: AgentDialogRequest<Agent> }
     | undefined;
 
   private readonly controller = new AbortController();
@@ -54,7 +54,7 @@ export class WorkspaceTrustPolling<
     return this.controller.signal;
   }
 
-  get currentRequest(): ElwoodDialogRequest<Agent> | undefined {
+  get currentRequest(): AgentDialogRequest<Agent> | undefined {
     return this.open?.request;
   }
 

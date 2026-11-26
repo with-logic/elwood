@@ -15,7 +15,7 @@ const verified: VerifiedWorkspaceTrust<"claude"> = {
     label: "workspace_trust",
     targetPath: "/workspace",
     targetScope: "folder",
-    targetDeclaresHooks: false,
+    disclosesHooks: false,
     text: "Trust this folder?",
     choices: [],
   },
@@ -50,7 +50,7 @@ async function openEvents() {
     gateIdentity: "1",
     menu: {
       target: { targetPath: "/workspace", targetScope: "folder" },
-      facts: { targetDeclaresHooks: false },
+      facts: { disclosesHooks: false },
       dialog: {
         header: "",
         options: [

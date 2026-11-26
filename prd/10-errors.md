@@ -9,7 +9,7 @@ Initial required error names:
 |---|---|
 | `unsupported_platform` | The current OS is not supported by the implementation. |
 | `claude_not_found` | `claude` could not be resolved or spawned. |
-| `claude_start_failed` | Claude started but exited or failed before the session was usable, or the session's `cwd` is not an existing directory (C-API-61). `listClaudeModels` also rejects with it, `details.category: "workspace_hooks"`, when Claude's workspace prompt says the folder declares hooks (§5.3). |
+| `claude_start_failed` | Claude started but exited or failed before the session was usable, or the session's `cwd` is not an existing directory (C-API-61). `listClaudeModels` also rejects with it, `details.category: "workspace_hooks"`, when Claude's workspace prompt discloses hooks, or when a Claude that cannot disclose hooks shows any workspace prompt (§5.3). |
 | `claude_update_failed` | `claude update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startClaude` when the installed CLI meets the minimum). |
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
