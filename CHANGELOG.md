@@ -68,6 +68,10 @@ back each entry are listed in `prd/14-conformance.md`.
   `question_answer_failed` (`details.category: "adapter"`) when 0.172 leaves its
   hidden cursor after the working row's glyph or elapsed time, or while it still
   shows the previous answer as waiting to be submitted.
+- A Codex 0.172 turn that ends while one of its queued questions is still open
+  now settles at `ready`. 0.172 draws a question it asks as a `? ` cell under the
+  prompt, and Elwood did not read that history as finished, so the session stayed
+  `blocked` and `send()` timed out.
 
 - Report Claude's auto-mode setup offer, which can appear right after a turn
   ends, as `blocked` with attention label `claude-auto-mode-offer`. A
