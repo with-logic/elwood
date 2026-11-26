@@ -5,7 +5,7 @@ import type { AgentDialogRequest, WorkspaceTrustFacts, WorkspaceTrustTarget } fr
 
 export type WorkspaceTrustMenu<Agent extends ElwoodAgentKind = ElwoodAgentKind> = {
   readonly target: WorkspaceTrustTarget;
-  /** Facts the verified native copy states, such as Claude's hooks rows (C-CLAUDE-26). */
+  /** The agent and the facts its verified native copy states, such as Claude's hooks rows (C-CLAUDE-26). */
   readonly facts: WorkspaceTrustFacts<Agent>;
   readonly dialog: {
     readonly header: string;
@@ -23,17 +23,15 @@ export function workspaceTrustMenuIdentity({ target, dialog }: WorkspaceTrustMen
 }
 
 export function createWorkspaceTrustRequest<Agent extends ElwoodAgentKind>(
-  agent: Agent,
   elwoodSessionId: string,
   { target, facts, dialog }: WorkspaceTrustMenu<Agent>,
 ): AgentDialogRequest<Agent> {
-  // Object.assign keeps the agent-specific facts as an intersection the compiler can
-  // check; a literal spread or `Object.freeze`'s `Readonly<>` of them does not narrow.
+  // Object.assign keeps the agent and its facts as an intersection the compiler can check;
+  // a literal spread or `Object.freeze`'s `Readonly<>` of them does not narrow.
   const request = Object.assign(
     {
       id: randomUUID(),
       elwoodSessionId,
-      agent,
       kind: "trust" as const,
       label: "workspace_trust" as const,
       targetPath: target.targetPath,

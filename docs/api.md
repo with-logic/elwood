@@ -268,11 +268,14 @@ with `model_automation_failed` (a secondary teardown failure is attached as
 `cause`). Trust note: the probe starts with `autotrust: true` for the given
 `cwd`, so it answers that directory's workspace, skill, plugin, and MCP trust
 prompts automatically. The exception is a Claude workspace prompt for a folder
-whose hooks could run, since trusting it would run them: `listClaudeModels` leaves
-a prompt that discloses hooks unanswered, and on a Claude older than 2.1.329, which
-cannot disclose them, every workspace prompt, and rejects with `claude_start_failed`
-and `details.category: "workspace_hooks"`. Point these functions at a directory you
-already trust.
+whose hooks could run, since trusting it would run them. `listClaudeModels` leaves
+unanswered a verified prompt that discloses hooks and, on a Claude older than
+2.1.329 or of an unparseable version, which cannot disclose them, every verified
+workspace prompt, and rejects with `claude_start_failed` and
+`details.category: "workspace_hooks"`. A workspace prompt Elwood cannot verify, such
+as the load row alone that Claude 2.1.326 through 2.1.328 draw for a folder with
+hooks, is never answered either, so the probe fails when readiness runs out. Point
+these functions at a directory you already trust.
 
 Both adapters accept a `persona` start option: an instruction delivered as the
 session's guaranteed first user message once the agent is ready, ahead of

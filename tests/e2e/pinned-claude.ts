@@ -18,12 +18,22 @@ import {
   setCommandRunnerForTests,
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
-import { shellQuote } from "../../src/runtime/shell.ts";
+import { probeShellCommand, shellQuote, userShell } from "../../src/runtime/shell.ts";
 import { privateTempDir, removeOrReport } from "../helpers/private-temp.ts";
 import { userConfigDir } from "./claude-home.ts";
 import { prefixShellArgument } from "./prefix-shell-argument.ts";
 
 const versionsDir = join(homedir(), ".local/share/claude/versions");
+
+/**
+ * The version of the Claude on `PATH`, or null when it is unparseable. It is probed only when
+ * Claude can run here (`skip` undefined), so a run that skips Claude pays no login shell.
+ */
+export async function installedClaudeVersion(skip: string | undefined): Promise<string | null> {
+  if (skip !== undefined) return null;
+  const probe = probeShellCommand("claude --version", "claude");
+  return parseVersion((await runProbe(userShell(), probe)).stdout);
+}
 
 /** The newest installed native Claude at or above `floor` and below `before`, if there is one. */
 export function installedClaudeBefore(before: string, floor: string): string | undefined {

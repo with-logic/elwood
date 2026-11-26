@@ -50,7 +50,7 @@ async function openEvents() {
     gateIdentity: "1",
     menu: {
       target: { targetPath: "/workspace", targetScope: "folder" },
-      facts: { disclosesHooks: false },
+      facts: { agent: "claude", disclosesHooks: false },
       dialog: {
         header: "",
         options: [

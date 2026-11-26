@@ -21,8 +21,11 @@ back each entry are listed in `prd/14-conformance.md`.
 - `listClaudeModels` does not approve that prompt, because its autotrust is implied
   rather than chosen. It rejects with `claude_start_failed` and
   `details.category: "workspace_hooks"`, and the folder stays untrusted. A Claude older
-  than 2.1.329 cannot disclose hooks, so on it `listClaudeModels` refuses every workspace
-  trust prompt the same way. List models from a folder Claude already trusts.
+  than 2.1.329, or of an unparseable version, cannot disclose hooks, so on it
+  `listClaudeModels` refuses every workspace trust prompt Elwood verifies the same way. A
+  prompt Elwood cannot verify, such as the load row alone that 2.1.326 through 2.1.328
+  draw, is never answered, so the probe fails when readiness runs out. List models from a
+  folder Claude already trusts.
 
 - Claude workspace trust requests have `disclosesHooks`. It is `true` when the prompt
   disclosed hooks that run once the folder is trusted. `false` means only that the prompt

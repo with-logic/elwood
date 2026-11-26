@@ -169,7 +169,7 @@ export class CodexWorkspaceTrustDiscovery {
       return undefined;
     }
 
-    const verified = this.polling.acceptVerified("codex", this.input.elwoodSessionId, candidate);
+    const verified = this.polling.acceptVerified(this.input.elwoodSessionId, candidate);
     this.requestMetadata = {
       request: verified.request,
       declineOutcome: candidate.menu.declineOutcome,

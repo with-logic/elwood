@@ -58,7 +58,10 @@ export function createClaudeWorkspaceTrustMenuMatcher(scope: ClaudeLaunchTrustEv
       promptHeaderKey: candidate.key,
       target: { targetPath, targetScope },
       // The copy is verified by now, so the hooks rows can only be the native pair (§5.4).
-      facts: { disclosesHooks: claudeWorkspaceDisclosesHooks(candidate.dialog.header) },
+      facts: {
+        agent: "claude",
+        disclosesHooks: claudeWorkspaceDisclosesHooks(candidate.dialog.header),
+      },
       dialog: candidate.dialog,
     };
   };

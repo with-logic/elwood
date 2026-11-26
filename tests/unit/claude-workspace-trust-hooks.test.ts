@@ -6,11 +6,9 @@
  * C-CLAUDE-26).
  */
 import { expect, test, vi } from "vitest";
+import type { ProbeWorkspaceTrust } from "../../src/claude/probe-trust.ts";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
-import {
-  ClaudeStartupPromptResponder,
-  type ProbeWorkspaceTrust,
-} from "../../src/claude/startup-prompts.ts";
+import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import { claudeWorkspaceDisclosesHooks } from "../../src/core/trust/copy.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { trustView } from "../../src/core/trust/view.ts";
@@ -117,9 +115,9 @@ test("C-CLAUDE-26 only the pair of hooks rows declares hooks", () => {
 });
 
 /** What a responder with the model probe's trust policy does with `frame`. */
-function probeOutcome(frame: string, hooksDisclosed = true) {
+function probeOutcome(frame: string, canDiscloseHooks = true) {
   const refused = vi.fn();
-  const policy: ProbeWorkspaceTrust = { hooksDisclosed, onRefused: refused };
+  const policy: ProbeWorkspaceTrust = { canDiscloseHooks, onRefused: refused };
   const responder = new ClaudeStartupPromptResponder(
     true,
     undefined,
@@ -137,39 +135,57 @@ function probeOutcome(frame: string, hooksDisclosed = true) {
   );
   const owner = responder.humanOwnedPrompt;
   responder.dispose();
-  return { outcomes, writes, refusals: refused.mock.calls.length, owner };
+  return { outcomes, writes, refusals: refused.mock.calls.map(([reason]) => reason), owner };
 }
 
-/** Left to a human: nothing is written, and the refusal is reported once. */
-const refusedOutcome = { outcomes: [], writes: [], refusals: 1, owner: "workspace_trust" };
+/** Left to a human: nothing is written, and the refusal is reported once, with `reason`. */
+const refusedOutcome = (reason: string) => ({
+  outcomes: [],
+  writes: [],
+  refusals: [reason],
+  owner: "workspace_trust",
+});
 
 test.each<readonly [string, string]>([
   ["wrapped at 100 columns", wrapped],
   ["unwrapped", wide],
   ...claudeHooksPromptCaptures,
 ])("C-CLAUDE-26 the probe leaves a hooks prompt to a human and reports it (%s)", (_, frame) => {
-  expect(probeOutcome(frame)).toEqual(refusedOutcome);
+  expect(probeOutcome(frame)).toEqual(refusedOutcome("hooks_disclosed"));
 });
 
 test("C-CLAUDE-26 the probe still answers a plain workspace prompt from a Claude that discloses hooks", () => {
   expect(probeOutcome(claudeWorkspaceTrustScreen("/tmp/project"))).toMatchObject({
     outcomes: [{ outcome: { kind: "attempted", prompt: "workspace_trust" } }],
-    refusals: 0,
+    refusals: [],
   });
 });
 
 test("C-CLAUDE-26 the probe leaves every workspace prompt to a human when Claude cannot disclose hooks", () => {
-  expect(probeOutcome(claudeWorkspaceTrustScreen("/tmp/project"), false)).toEqual(refusedOutcome);
+  expect(probeOutcome(claudeWorkspaceTrustScreen("/tmp/project"), false)).toEqual(
+    refusedOutcome("hooks_undisclosable"),
+  );
+});
+
+test.each([
+  ["skill", "Load this skill?\n1. Yes, load this skill\n2. No", "skill_trust"],
+  ["plugin", "Do you trust the plugin?\n1. Yes, trust it\n2. No", "plugin_trust"],
+])("C-CLAUDE-26 the probe still answers a %s prompt from a Claude that cannot disclose hooks", (_, frame, prompt) => {
+  // Autotrust began its numbered answer; the policy reported no refusal.
+  expect(probeOutcome(frame, false)).toMatchObject({
+    outcomes: [{ outcome: { kind: "attempted", prompt, input: "1" } }],
+    refusals: [],
+  });
 });
 
 test.each([
   true,
   false,
-])("C-CLAUDE-26 the probe ignores a workspace prompt whose copy is not verified (disclosing: %s)", (hooksDisclosed) => {
+])("C-CLAUDE-26 the probe ignores a workspace prompt whose copy is not verified (can disclose: %s)", (canDiscloseHooks) => {
   const frame = wide.replace(` ${load}`, ` ${load}\n ${extra}`);
-  expect(probeOutcome(frame, hooksDisclosed)).toMatchObject({
+  expect(probeOutcome(frame, canDiscloseHooks)).toMatchObject({
     outcomes: [],
     writes: [],
-    refusals: 0,
+    refusals: [],
   });
 });

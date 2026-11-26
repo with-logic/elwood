@@ -28,8 +28,8 @@ import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
-import { claudeDisclosesHooks, preflightClaude } from "../preflight.ts";
-import type { ProbeWorkspaceTrust } from "../startup-prompts.ts";
+import { claudeCanDiscloseHooks, preflightClaude } from "../preflight.ts";
+import type { ProbeTrustRefusal, ProbeWorkspaceTrust } from "../probe-trust.ts";
 import {
   type ClaudeLaunchTrustEvidence,
   captureClaudeStartupTrustEvidence,
@@ -57,13 +57,13 @@ export function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessi
 /**
  * Internal deterministic-identity start used by owners that must clean failed launch state.
  * `onProbeTrustRefused` makes the model probe's workspace trust policy (§5.3), and is called
- * with whether this Claude discloses hooks when the policy refuses a prompt.
+ * with the reason whenever the policy refuses a prompt.
  */
 export async function startClaudeWithId(
   rawOptions: StartClaudeOptions,
   elwoodSessionId: string,
   checkedDirectory?: CheckedLaunchDirectory,
-  onProbeTrustRefused?: (hooksDisclosed: boolean) => void,
+  onProbeTrustRefused?: (reason: ProbeTrustRefusal) => void,
 ): Promise<ClaudeSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
@@ -124,10 +124,9 @@ export async function startClaudeWithId(
 
 async function probeWorkspaceTrust(
   directory: ProbeDirectory,
-  onRefused: (hooksDisclosed: boolean) => void,
+  onRefused: (reason: ProbeTrustRefusal) => void,
 ): Promise<ProbeWorkspaceTrust> {
-  const hooksDisclosed = await claudeDisclosesHooks(directory);
-  return { hooksDisclosed, onRefused: () => onRefused(hooksDisclosed) };
+  return { canDiscloseHooks: await claudeCanDiscloseHooks(directory), onRefused };
 }
 
 export function startClaudeFromRecord(

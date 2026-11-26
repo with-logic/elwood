@@ -8,6 +8,7 @@ import { type ListModelsOptions, probeModels } from "../core/models/list.ts";
 import { ownedProbeStateDir } from "../core/models/probe-state.ts";
 import type { AgentModelOption } from "../core/models/rows.ts";
 import { claudeHooksDisclosureVersion } from "./preflight.ts";
+import type { ProbeTrustRefusal } from "./probe-trust.ts";
 import { startClaudeWithId } from "./session/index.ts";
 
 /**
@@ -41,7 +42,7 @@ export function listClaudeModels(options: ListModelsOptions): Promise<readonly A
           },
           randomUUID(),
           undefined,
-          (hooksDisclosed) => refuse(workspaceTrustRefusal(hooksDisclosed)),
+          (reason) => refuse(workspaceTrustRefusal(reason)),
         ),
       removeState: state.remove,
     },
@@ -49,13 +50,15 @@ export function listClaudeModels(options: ListModelsOptions): Promise<readonly A
   );
 }
 
-function workspaceTrustRefusal(hooksDisclosed: boolean): ElwoodError {
-  const reason = hooksDisclosed
-    ? "Claude's workspace trust prompt says this folder has hooks"
-    : `Claude older than ${claudeHooksDisclosureVersion}, or of an unknown version, cannot say whether this folder has hooks`;
+const refusalReasons: Readonly<Record<ProbeTrustRefusal, string>> = {
+  hooks_disclosed: "Claude's workspace trust prompt says this folder has hooks",
+  hooks_undisclosable: `Claude older than ${claudeHooksDisclosureVersion}, or of an unknown version, cannot say whether this folder has hooks`,
+};
+
+function workspaceTrustRefusal(reason: ProbeTrustRefusal): ElwoodError {
   return new ElwoodError(
     "claude_start_failed",
-    `${reason}; listing models does not approve its workspace trust prompt. List models from a folder Claude already trusts.`,
+    `${refusalReasons[reason]}; listing models does not approve its workspace trust prompt. List models from a folder Claude already trusts.`,
     { category: "workspace_hooks" },
   );
 }

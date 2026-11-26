@@ -25,10 +25,11 @@ export const minimumClaudeVersion = "2.1.144";
 export const claudeHooksDisclosureVersion = "2.1.329";
 
 /**
- * Whether the installed Claude discloses hooks on its workspace prompt, from the same cached
- * `--version` read the preflight made. An unparseable version cannot vouch for it.
+ * Whether the installed Claude can disclose hooks on its workspace prompt, from the same cached
+ * `--version` read the preflight made. This is the version's capability, not whether a given
+ * prompt disclosed hooks. An unparseable version cannot vouch for it.
  */
-export async function claudeDisclosesHooks(directory: ProbeDirectory): Promise<boolean> {
+export async function claudeCanDiscloseHooks(directory: ProbeDirectory): Promise<boolean> {
   const version = parseVersion((await readClaudeVersion(directory)).stdout);
   return version !== null && compareVersions(version, claudeHooksDisclosureVersion) >= 0;
 }

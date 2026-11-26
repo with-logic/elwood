@@ -27,9 +27,9 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "../command.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
+import type { ProbeWorkspaceTrust } from "../probe-trust.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
-import type { ProbeWorkspaceTrust } from "../startup-prompts.ts";
 import type { ClaudeLaunchTrustEvidence } from "../workspace-trust/target.ts";
 
 /** The environment snapshot and directory identity captured before this launch's preflight. */

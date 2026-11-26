@@ -34,8 +34,9 @@ type ProbeSession<T extends AgentModelOption = AgentModelOption> = Pick<
 export type ProbeAdapter<T extends AgentModelOption> = {
   /**
    * Starts the throwaway session against the probe's owned state directory. `refuse`
-   * ends the probe with that error as soon as the adapter calls it, even before
-   * readiness, for a prompt the probe must not answer (§5.3).
+   * records that error for a prompt the probe must not answer (§5.3). It may be called
+   * while `start` is still pending; once `start` returns, the recorded refusal is raced
+   * against readiness, so it ends the probe without waiting for readiness to run out.
    */
   readonly start: (refuse: (error: Error) => void) => Promise<ProbeSession<T>>;
   /**

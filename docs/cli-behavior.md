@@ -833,10 +833,7 @@ rows. Hooks in `.claude/settings.local.json` drew the same on 2.1.325, 2.1.326,
 2.1.329 and 2.1.330. A plain prompt from a Claude before 2.1.329 is therefore no
 evidence that nothing runs, which is why the model probe refuses every workspace
 prompt from such a Claude (§5.3). Accepting runs the project's hooks: a `SessionStart`
-hook ran as the trusted session started. Before C-CLAUDE-26 made these rows native
-copy, Elwood failed closed on them, so `autotrust: true` left such a session `blocked`.
-C-E2E-23's isolation test timed out that way, because its scratch project declares a
-`SessionStart` hook. C-E2E-28 runs the real prompt for each settings file under
+hook ran as the trusted session started. C-E2E-28 runs the real prompt for each settings file under
 `autotrust` and through `answerDialog()`, checks that `listClaudeModels` refuses it,
 and checks that the probe refuses the plain prompt of an installed 2.1.325 (§5.3). Claude does not wait for a project `SessionStart`
 hook before it shows the composer: with a hook that slept 20 s, `answerDialog()`

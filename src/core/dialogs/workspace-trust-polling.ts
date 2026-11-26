@@ -70,12 +70,11 @@ export class WorkspaceTrustPolling<
   }
 
   acceptVerified(
-    agent: Agent,
     elwoodSessionId: string,
     { frame, identity, menu }: Candidate,
   ): VerifiedWorkspaceTrust<Agent> {
     if (this.open?.identity !== identity) {
-      this.open = { identity, request: createWorkspaceTrustRequest(agent, elwoodSessionId, menu) };
+      this.open = { identity, request: createWorkspaceTrustRequest(elwoodSessionId, menu) };
     }
     return { frame, request: this.open.request };
   }
