@@ -2,7 +2,7 @@
  * Who answers each appearance of Codex's update offer: Elwood's one bounded skip, or raw
  * caller input (PRD §5.5; C-CODEX-12, C-CODEX-17, C-CODEX-27).
  */
-import type { SettledStartupOutcome } from "../../core/startup/write.ts";
+import type { StartupWriteCompletion } from "../../core/startup/write.ts";
 import { trustGateVisible } from "../../core/trust/blocking.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { safeUpdateOption } from "./selection.ts";
@@ -10,12 +10,28 @@ import { startCodexUpdateSkip } from "./skip-attempt.ts";
 import { CodexUpdatePromptTracker } from "./tracker.ts";
 import type { UpdateSkipAttempt, UpdateSkipRequest } from "./types.ts";
 
-export type CodexUpdateSkipsOptions = {
+type CodexUpdateSkipsOptions = {
   readonly clearance: TrustClearance;
+  /**
+   * The live session's input hold. Supplying it also defers clearance: the tracker waits
+   * for `observeClearance`, which the session calls once a frame's retained input is
+   * classified. Without it, as for a static caller, the tracker checks clearance itself
+   * on each frame without the offer.
+   */
   readonly inputHeld: (() => boolean) | undefined;
   /** The responder's lifetime: closing ends every skip. */
   readonly signal: AbortSignal;
   readonly onStateChange: (() => void) | undefined;
+};
+
+/** Elwood's skip of an update appearance, as the startup outcome it reports. */
+type UpdateSkipOutcome = {
+  readonly outcome: {
+    readonly kind: "attempted";
+    readonly prompt: "update";
+    readonly input: string;
+  };
+  readonly settled: Promise<StartupWriteCompletion>;
 };
 
 /** What one frame meant for the update offer. */
@@ -24,7 +40,7 @@ type CodexUpdateObservation = {
   /** The frame shows an appearance that needs the host's attention again. */
   readonly renewAttention: boolean;
   /** Elwood's skip, when this frame started one. */
-  readonly outcome: SettledStartupOutcome<"codex"> | undefined;
+  readonly outcome: UpdateSkipOutcome | undefined;
 };
 
 /**
@@ -99,7 +115,7 @@ export class CodexUpdateSkips {
     screenText: string,
     writeAutomation: UpdateSkipRequest["writeAutomation"],
     readFrame: UpdateSkipRequest["readFrame"],
-  ): SettledStartupOutcome<"codex"> | undefined {
+  ): UpdateSkipOutcome | undefined {
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
     // update-skip automation, even when its rows resemble the update options. This gates
     // the WRITE only: the tracker still counts such a frame as an update appearance, so
