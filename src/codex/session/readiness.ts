@@ -13,6 +13,7 @@ import { codexComposerConfigured } from "../screen/clearance.ts";
 import { codexUnconfiguredComposerVisible } from "../update/repaint.ts";
 import type { CodexEventMap } from "./types.ts";
 
+/** Codex's header drawn alone while it loads (C-ATTN-09). */
 export const codexBootFrame = nativeBootFrame(/>_ OpenAI Codex \(v\d+\.\d+\.\d+/);
 
 export function createCodexReadinessGate(
