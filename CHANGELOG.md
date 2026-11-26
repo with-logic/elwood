@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
+  ("Could not clear the staged composer draft.") when the previous turn completed
+  before Elwood saw the empty composer. This was most likely in auto mode. Elwood
+  sent clear keys to a composer that was already empty, and Claude repaints nothing
+  for them. When the frames after the earlier send's Enter show that Claude took
+  its input, Elwood now releases that draft without sending keys.
+
 - `autotrust: true` now approves Claude's workspace trust prompt when it discloses the
   folder's hooks, and Claude then runs those hooks. Claude Code 2.1.329 and later add two
   hooks rows to that prompt, naming `.claude/settings.json`, `.claude/settings.local.json`
@@ -86,6 +93,13 @@ back each entry are listed in `prd/14-conformance.md`.
   never settled, a content-free `turn_end_hold_expired` warning reports it.
   `elwood run` no longer fails when the offer appears after its prompt's turn
   has ended.
+- Initial readiness waits for PTY output the agent has already sent to render,
+  including an open synchronized update. A repaint still in progress could
+  replace the configured composer Elwood last rendered, and the readiness
+  deadline, Claude's `InstructionsLoaded` hook or Codex's `SessionStart` hook
+  then released queued input onto the screen that replaced it. A hook, deadline
+  or backstop that meets undrawn output now judges the frame it draws, or the
+  last frame if that render fails.
 
 ## [0.8.0] - 2026-11-25
 

@@ -1,6 +1,6 @@
 /**
- * Seeds, starts and waits for Claude's auto-mode setup offer for the real-CLI tests of
- * C-ATTN-09, C-ATTN-10 and C-CLI-05 (PRD §5.3, §12A.2).
+ * Seeds, snoozes, starts and waits for Claude's auto-mode setup offer for the real-CLI tests
+ * of C-ATTN-09, C-ATTN-10, C-API-56 and C-CLI-05 (PRD §5.3, §12A.2).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,13 +21,23 @@ import { waitFor } from "./wait-for.ts";
  * (`dismissedAt`); see `docs/cli-behavior.md`. Seed this process's private config, and
  * replace `autoModeEnvSetup` outright so that an earlier test's dismissal is cleared too.
  */
-export function seedOffer(): void {
+export function seedOffer(snooze: { readonly dismissedAt?: number } = {}): void {
   const path = configPath();
   const config = readConfig();
   const prior = config["numStartups"];
   const numStartups = Math.max(typeof prior === "number" ? prior : 0, 5);
-  const seeded = { ...config, numStartups, autoModeEnvSetup: { denials: 5 } };
+  const seeded = { ...config, numStartups, autoModeEnvSetup: { ...snooze, denials: 5 } };
   writeFileSync(path, JSON.stringify(seeded), { mode: 0o600 });
+}
+
+/**
+ * The same seed plus the state Claude's `Not now` records (`dismissedAt`, which Esc also
+ * stamps), so that an auto-mode test runs its turns without the offer. Returns that stamp.
+ */
+export function seedSnoozedOffer(): number {
+  const dismissedAt = Date.now();
+  seedOffer({ dismissedAt });
+  return dismissedAt;
 }
 
 const configPath = () => join(defaultClaudeConfigDir, ".claude.json");
