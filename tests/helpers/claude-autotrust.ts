@@ -1,7 +1,7 @@
 /**
  * What Claude's autotrust does with a captured trust prompt: whether it verifies, what it
- * writes, and how its answer settles, for the workspace and MCP server prompt tests (PRD §5.4,
- * C-CLAUDE-29, C-CLAUDE-28).
+ * writes, and how its answer settles, for the workspace, hooks and MCP server prompt tests
+ * (PRD §5.4, C-CLAUDE-26, C-CLAUDE-29, C-CLAUDE-28).
  */
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";

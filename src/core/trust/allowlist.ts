@@ -17,6 +17,7 @@ import {
 import {
   claudeBypassOptions,
   claudeExtensionOptions,
+  claudeMcpAccept,
   claudeMcpFooter,
   claudeMcpOptions,
   claudeWorkspaceOptions,
@@ -37,8 +38,6 @@ export const codexFolderAccessHeader = /^Trust this folder\?(?:\s|$)/;
 // be selected for them.
 const notDecline = "(?!.*\\b(no|without|not|quit|cancel|deny|don't)\\b)";
 const yesOption = new RegExp(`^${notDecline}.*\\b(yes|trust|continue|proceed)\\b`, "i");
-// Exact, so the persistent "Use this and all future MCP servers" option is never chosen.
-const useMcpOption = /^Use this(?: MCP)? server$/i;
 const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all)\\b`, "i");
 const acceptOption = new RegExp(`^${notDecline}.*\\byes\\b.*\\baccept\\b`, "i");
 
@@ -115,7 +114,7 @@ export const trustPromptAllowlist = [
       /^(?:New MCP server found in this project(?:: [\w.:-]+)?|do you trust (?:this|the) MCP server\?)(?:\s|$)/i,
     descriptionPattern: claudeMcpDescription,
     optionPattern: claudeMcpOptions,
-    accept: useMcpOption,
+    accept: claudeMcpAccept,
     answerPolicy: "autotrust",
     footer: claudeMcpFooter,
   },

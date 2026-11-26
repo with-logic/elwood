@@ -4,8 +4,13 @@ export const claudeWorkspaceOptions =
   /^(?:Yes(?:, (?:I trust this folder|proceed|continue))?|No(?:, (?:exit|cancel))?)$/i;
 export const claudeExtensionOptions =
   /^(?:Yes(?:, (?:trust it|load this skill|continue))?|No(?:, (?:exit|cancel))?)$/i;
-export const claudeMcpOptions =
-  /^(?:Use this(?: MCP)? server|Use this and all future MCP servers in this project|Use all future servers|Continue without using this MCP server|No(?:, (?:exit|cancel))?)$/i;
+const claudeMcpUseThisServer = "Use this(?: MCP)? server";
+export const claudeMcpOptions = new RegExp(
+  `^(?:${claudeMcpUseThisServer}|Use this and all future MCP servers in this project|Use all future servers|Continue without using this MCP server|No(?:, (?:exit|cancel))?)$`,
+  "i",
+);
+// Exact, so the persistent "Use this and all future MCP servers" option is never chosen.
+export const claudeMcpAccept = new RegExp(`^${claudeMcpUseThisServer}$`, "i");
 export const claudeBypassOptions = /^(?:Yes, I accept|No, exit)$/i;
 export const codexWorkspaceOptions = /^(?:Yes(?:, continue)?|No(?:, quit)?)$/i;
 export const codexHookReviewLabels = [

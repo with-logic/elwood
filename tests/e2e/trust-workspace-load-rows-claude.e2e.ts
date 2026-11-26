@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { isRecord } from "../../src/core/predicates.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { shellQuote } from "../../src/runtime/shell.ts";
 import {
@@ -118,11 +119,12 @@ test("C-E2E-29 autotrust answers the workspace and MCP server prompts and the se
     assert.deepEqual(started.answers, ["workspace_trust", "mcp_trust"]);
     // "Use this MCP server" approves this server alone; the all-future row would persist
     // `enableAllProjectMcpServers` for every server the folder adds later.
-    const local = JSON.parse(
+    const local: unknown = JSON.parse(
       readFileSync(join(project.cwd, ".claude", "settings.local.json"), "utf8"),
     );
-    assert.deepEqual(local.enabledMcpjsonServers, ["probe"]);
-    assert.equal(local.enableAllProjectMcpServers, undefined);
+    assert.ok(isRecord(local), "settings.local.json holds an object");
+    assert.deepEqual(local["enabledMcpjsonServers"], ["probe"]);
+    assert.equal(local["enableAllProjectMcpServers"], undefined);
     await session.stop();
   } finally {
     await cleanup(session);

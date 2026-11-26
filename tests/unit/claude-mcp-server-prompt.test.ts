@@ -33,7 +33,7 @@ function selectUseThisServer(screen: string): string {
 test.each([
   ["120", claudeMcpServerPrompt],
   ["100", claudeMcpServerPromptNarrow],
-])("C-CLAUDE-28 autotrust uses the server Claude's MCP server prompt offers, at %s columns", async (_, frame) => {
+])("C-CLAUDE-28 autotrust selects the single-server option of Claude's MCP server prompt, at %s columns", async (_, frame) => {
   expect(trustView(frame, "claude", claudeTrustClearance)).toMatchObject({
     kind: "candidate",
     valid: true,
