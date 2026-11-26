@@ -21,6 +21,16 @@ const automationScopes = new WeakMap<
 
 /** Keyed by the session's xterm, which every terminal view of that session shares. */
 const callerInputListeners = new WeakMap<object, Set<() => void>>();
+/** Each session's composer owner, keyed the same way. */
+const composerOwners = new WeakMap<object, ComposerCleanup>();
+
+/**
+ * True while queued input the session staged in this terminal has not yet been submitted
+ * or abandoned: its Enter has not gone out, so a dialog painted over it is holding it.
+ */
+export function stagedInputPending(terminal: { readonly xterm: object }): boolean {
+  return composerOwners.get(terminal.xterm)?.holdsUnsubmittedInput === true;
+}
 
 /**
  * Run `listener` whenever caller input revokes automation in this terminal's session,
@@ -111,6 +121,7 @@ export class SessionInputOwnership {
       () => captureRenderProgress(this.automated, "pty"),
       onCleared,
     );
+    composerOwners.set(this.automated.xterm, cleanup);
     return (work, signal) => cleanup.run(work, signal);
   }
 
