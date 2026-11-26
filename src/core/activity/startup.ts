@@ -1,4 +1,4 @@
-/** Redact and bound the live-only startup screen activity (PRD §5.4, C-ATTN-06). */
+/** Redact and bound the live-only startup screen activity (PRD §5.4, C-ATTN-06, C-ATTN-11). */
 import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 import type { ElwoodAgentKind } from "./index.ts";
 
@@ -55,12 +55,17 @@ function redactSkKeys(screen: string): string {
     .replace(skKeyShape, "sk-[REDACTED]");
 }
 
+/** Reported from the readiness deadline (C-ATTN-11) or at the backstop (C-ATTN-06). */
+export type UnrecognizedStartupLabel =
+  | "initial_ready_deadline"
+  | InitialReadyBackstopWarning["code"];
+
 export type UnrecognizedStartupActivity = {
   readonly elwoodSessionId: string;
   readonly agent: ElwoodAgentKind;
   readonly source: "terminal";
   readonly kind: "unrecognized_startup";
-  readonly label: InitialReadyBackstopWarning["code"];
+  readonly label: UnrecognizedStartupLabel;
   /**
    * The screen, trailing whitespace removed and limited to its last 8,192 UTF-16 units.
    * Only `sk-` API-key-shaped tokens are redacted, including a key wrapped across rows,
@@ -79,6 +84,7 @@ export function unrecognizedStartupActivity(
   agent: ElwoodAgentKind,
   elwoodSessionId: string,
   screen: string,
+  label: UnrecognizedStartupLabel = "initial_ready_backstop",
 ): UnrecognizedStartupActivity {
   const text = redactSkKeys(screen)
     .trimEnd()
@@ -90,7 +96,7 @@ export function unrecognizedStartupActivity(
     agent,
     source: "terminal",
     kind: "unrecognized_startup",
-    label: "initial_ready_backstop",
+    label,
     text,
   };
 }
