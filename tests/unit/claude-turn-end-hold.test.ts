@@ -1,35 +1,82 @@
-/** Queued Claude input after a turn waits for the frame that ends it, for a bounded time (C-ATTN-10). */
+/**
+ * After a Claude turn ends, queued input waits for a fresh frame that stays unchanged for the
+ * settle window and shows the composer with no working indicator or dialog, for a bounded
+ * time (C-ATTN-10).
+ */
 import { expect, test } from "vitest";
-import { ClaudeTurnEndHold, turnEndPaintLimitMs } from "../../src/claude/session/turn-end-hold.ts";
+import {
+  ClaudeTurnEndHold,
+  turnEndPaintLimitMs,
+  turnEndSettleMs,
+} from "../../src/claude/session/turn-end-hold.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { claudeIdle, claudeWorking } from "../fixtures/owned-turn/composer.ts";
 
-test("C-ATTN-10 a turn's end holds only until a frame stops showing it working, up to the limit", async () => {
+const dialog = `${claudeIdle}\r\n Do you want to proceed?\r\n ❯ 1. Yes\r\n   2. No\r\n Esc to cancel`;
+const blank = "\x1b[2J\x1b[H";
+
+async function hold() {
   const terminal = createHeadlessTerminal({ cols: 80, rows: 10 }, () => {});
-  let now = 0;
-  const hold = new ClaudeTurnEndHold(
+  const clock = { now: 0 };
+  const turnEnd = new ClaudeTurnEndHold(
     () => terminal,
-    () => now,
+    () => clock.now,
   );
+  return { terminal, clock, turnEnd, paint: (frame: string) => terminal.writeOutput(frame) };
+}
+
+test("C-ATTN-10 only a fresh idle composer frame, unchanged for the settle window, releases", async () => {
+  const { terminal, clock, turnEnd, paint } = await hold();
   try {
-    await terminal.writeOutput(claudeWorking);
-    // Working with no reported end is a running turn: Claude queues input for it.
-    expect(hold.holds()).toBe(false);
-    hold.turnEnded();
-    expect(hold.holds()).toBe(true);
-    now = turnEndPaintLimitMs - 1;
-    expect(hold.holds()).toBe(true);
-    // A working indicator that outlives its turn stops holding at the limit, for good.
-    now = turnEndPaintLimitMs;
-    expect(hold.holds()).toBe(false);
-    now = 0;
-    expect(hold.holds()).toBe(false);
-    // The end frame releases at once, and stays released when work resumes.
-    hold.turnEnded();
-    await terminal.writeOutput(claudeIdle);
-    expect(hold.holds()).toBe(false);
-    await terminal.writeOutput(claudeWorking);
-    expect(hold.holds()).toBe(false);
+    await paint(claudeIdle);
+    // Nothing ended: nothing is held, even on an idle frame.
+    expect(turnEnd.holds()).toBe(false);
+    expect(turnEnd.arm()).toBeUndefined();
+    expect(turnEnd.armed).toBe(true);
+    // The idle frame already on screen counts from when the hold first reads it.
+    clock.now = 100;
+    expect(turnEnd.holds()).toBe(true);
+    clock.now = 100 + turnEndSettleMs - 1;
+    expect(turnEnd.holds()).toBe(true);
+    // A change restarts the window: here, a dialog that paints over the composer.
+    await paint(dialog);
+    clock.now = 100 + turnEndSettleMs;
+    expect(turnEnd.holds()).toBe(true);
+    clock.now = 200 + 2 * turnEndSettleMs;
+    expect(turnEnd.holds()).toBe(true);
+    // Working, and a screen without Claude's composer, never release either.
+    await paint(claudeWorking);
+    clock.now = 300 + 3 * turnEndSettleMs;
+    expect(turnEnd.holds()).toBe(true);
+    await paint(blank);
+    expect(turnEnd.holds()).toBe(true);
+    clock.now = 400 + 4 * turnEndSettleMs;
+    expect(turnEnd.holds()).toBe(true);
+    await paint(claudeIdle);
+    expect(turnEnd.holds()).toBe(true);
+    clock.now = 400 + 5 * turnEndSettleMs;
+    expect(turnEnd.holds()).toBe(false);
+    expect(turnEnd.armed).toBe(false);
+    expect(turnEnd.holds()).toBe(false);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test("C-ATTN-10 a hold ends at its limit, and a tentative one can be undone", async () => {
+  const { terminal, clock, turnEnd, paint } = await hold();
+  try {
+    await paint(claudeWorking);
+    turnEnd.arm();
+    clock.now = turnEndPaintLimitMs - 1;
+    expect(turnEnd.holds()).toBe(true);
+    clock.now = turnEndPaintLimitMs;
+    expect(turnEnd.holds()).toBe(false);
+    // An arm that replaces an active hold reports it, so that it can be put back.
+    turnEnd.arm();
+    expect(turnEnd.arm()).toBe(turnEndPaintLimitMs);
+    turnEnd.restore(undefined);
+    expect(turnEnd.holds()).toBe(false);
   } finally {
     terminal.dispose();
   }
