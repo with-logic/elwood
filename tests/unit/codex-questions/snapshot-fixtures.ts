@@ -3,8 +3,8 @@ import { isRecord, isStringArray } from "../../../src/core/predicates.ts";
 import type { TerminalSnapshot } from "../../../src/terminal/headless.ts";
 import { fixture } from "./helpers.ts";
 
-export function snapshot(name: string): TerminalSnapshot {
-  const value: unknown = JSON.parse(fixture(name));
+export function snapshot(name: string, version?: string): TerminalSnapshot {
+  const value: unknown = JSON.parse(fixture(name, version));
   if (!isRecord(value)) throw new Error(`Invalid terminal capture: ${name}`);
   const { cols, rows, cursorX, cursorY, lines, text } = value;
   if (

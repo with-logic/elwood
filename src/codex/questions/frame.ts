@@ -1,6 +1,7 @@
 /** Recognize captured Codex question layouts without matching transcript prose (PRD §4). */
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { displayColumns } from "../screen/display-columns.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
 import {
   composerInputPrefix,
@@ -10,6 +11,7 @@ import {
   queuedPanelHeader,
 } from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
+import { blankOrPendingMessages } from "./native-pending.ts";
 import { nativeSelection } from "./selection.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
@@ -119,7 +121,8 @@ function modalQuestionPosition(lines: readonly string[], footer: ModalQuestionFo
   if (requireSingleQuestion && count !== 1) return undefined;
   return { start, count, index: Number(match[1]) - 1, notes };
 }
-/** Native choice lists hide the cursor; a working redraw leaves its position above the panel. */
+/** Native choice lists hide the cursor; a working redraw leaves it above the panel, after the
+ * last working-row cell Codex changed: the pulsing glyph, an elapsed-time digit or the row's end. */
 function questionCursor(
   frame: QuestionFrame,
   lines: readonly string[],
@@ -128,13 +131,11 @@ function questionCursor(
 ): boolean {
   if (frame.cursorRow >= start) return true;
   const row = lines[frame.cursorRow]!;
-  return (
-    kind === "queued" &&
-    frame.cursorVisible === false &&
-    frame.cursorX === row.length &&
-    codexWorkingScreen.test(row) &&
-    lines.slice(frame.cursorRow + 1, start).every((line) => !line.trim())
-  );
+  const hiddenQueuedCursor = kind === "queued" && frame.cursorVisible === false;
+  const cursorWithinWorkingRow =
+    frame.cursorX > 0 && frame.cursorX <= displayColumns(row) && codexWorkingScreen.test(row);
+  const interveningRowsAllowed = blankOrPendingMessages(lines.slice(frame.cursorRow + 1, start));
+  return hiddenQueuedCursor && cursorWithinWorkingRow && interveningRowsAllowed;
 }
 /** Correlate the prompt and complete ordered native options with a known definition. */
 export function matchesQuestion(view: QuestionView, question: QuestionDefinition): boolean {

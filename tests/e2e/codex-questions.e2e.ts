@@ -21,7 +21,11 @@ import {
   publicCodexQuestionRecords,
   publicCodexQuestionSandbox,
 } from "./questions/codex-public-sandbox.ts";
-import { questionCodexBinary, questionCodexModel } from "./questions/codex-sandbox.ts";
+import {
+  questionCodexBinary,
+  questionCodexModel,
+  questionCodexVersion,
+} from "./questions/codex-sandbox.ts";
 import { assertQuestionAnswerPrivacy, privateQuestionArtifacts } from "./questions/proof-files.ts";
 
 test("C-E2E-19 native Codex queued and grouped answers preserve the caller turn", {
@@ -130,7 +134,7 @@ test("C-E2E-19 native Codex queued and grouped answers preserve the caller turn"
     );
     assertQuestionAnswerPrivacy(sandbox.stateDir, [...events, ...normalized], privateAnswers);
     t.diagnostic(
-      "Codex0.163.0: three independent queued answers and one three-question Plan set matched complete native records; send completed only on final.",
+      `${questionCodexVersion}: three independent queued answers and one three-question Plan set matched complete native records; send completed only on final.`,
     );
   } catch (error) {
     primaryFailure = true;

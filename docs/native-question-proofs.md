@@ -62,7 +62,7 @@ configuration, authentication and process environment remain unchanged.
 ELWOOD_NATIVE_QUESTIONS_PROOF=1 node --no-warnings --test --test-concurrency=1 tests/e2e/codex-questions.e2e.ts
 ```
 
-The proof pins Codex 0.163.0 and uses `gpt-6-luna` with low effort. The first
+The proof pins Codex 0.172.0 and uses `gpt-6-luna` with low effort. The first
 turn asks three queued questions in one asynchronous call. It answers Note,
 Literal, then Color through the public API, checking the other requests remain
 available and the original turn remains running. The second turn submits one
