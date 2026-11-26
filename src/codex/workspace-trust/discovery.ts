@@ -1,6 +1,7 @@
 /** Verify the live Codex workspace trust request for listing and delivery (C-ATTN-07, C-ATTN-08). */
 
 import { runContained } from "../../core/contained.ts";
+import type { ElwoodDialogEvent } from "../../core/dialogs/types.ts";
 import {
   type VerifiedWorkspaceTrust,
   WorkspaceTrustPolling,
@@ -10,7 +11,7 @@ import { settledNativeSnapshot } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal, TerminalSnapshot } from "../../terminal/headless.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import { createTrustFrameMatcher, type WorkspaceTrustFrame } from "./menu-frame.ts";
-import type { CodexTrustDialogRequest, ElwoodDialogEvent } from "./types.ts";
+import type { CodexTrustDialogRequest } from "./types.ts";
 
 type WorkspaceTrustRequestMetadata = {
   readonly request: CodexTrustDialogRequest;

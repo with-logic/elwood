@@ -7,7 +7,6 @@ import { randomUUID } from "node:crypto";
 import type { ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";
 import { updateDialogOptions, updateScreenBanner } from "./layout.ts";
 
-const versionPair = /(\d+\.\d+\.\d+)\s*(?:->|→)\s*(\d+\.\d+\.\d+)/;
 /** The first choice row and everything after it. */
 const choicesOnward = /^\s*[›>❯]?\s*\d+[.)]\s[\s\S]*/m;
 
@@ -17,11 +16,13 @@ export type CodexUpdateOffer = Pick<ElwoodUpdateDialogRequest, "text" | "version
 
 /** The offer on `frame`, or undefined unless its banner and one valid choice block are drawn. */
 export function readCodexUpdateOffer(frame: string): CodexUpdateOffer | undefined {
+  // Most frames show no banner, so the choice rows are parsed only under one.
   const banner = updateScreenBanner.exec(frame);
+  if (!banner) return undefined;
   const options = updateDialogOptions(frame);
-  if (!(banner && options?.length)) return undefined;
+  if (!options?.length) return undefined;
   const text = frame.slice(banner.index).replace(choicesOnward, "").replace(/\s+/g, " ").trim();
-  const [, installed, offered] = versionPair.exec(banner[0]) ?? [];
+  const [, installed, offered] = banner;
   return {
     text,
     ...(installed && offered ? { versions: { installed, offered } } : {}),

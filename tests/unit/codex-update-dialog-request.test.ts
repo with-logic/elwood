@@ -31,8 +31,9 @@ test("C-ATTN-12 the 0.155 offer gives its versions, banner text and choices", ()
 
 test("C-ATTN-12 a 40-column offer folds its wrapped link into the text", () => {
   const offer = readCodexUpdateOffer(capturedFrame("codex-0.172.0/update/offer-standalone-40x30"));
-  expect(offer?.text).toMatch(
-    /^Update available · 0\.172\.0 → 99\.0\.0 Release notes: https:\S+ \S+$/,
+  // Codex wraps the link at column 40; folding keeps both halves, joined by one space.
+  expect(offer?.text).toBe(
+    "Update available · 0.172.0 → 99.0.0 Release notes: https://github.com/openai/codex/rele ases/latest",
   );
   expect(offer?.labels.slice(1)).toEqual(["Skip", "Skip until next version"]);
 });

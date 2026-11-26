@@ -1,6 +1,6 @@
 /** Coordinate Codex workspace trust answers and lifecycle events (C-ATTN-07, C-ATTN-08). */
 import { setImmediate } from "node:timers/promises";
-import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
+import type { ElwoodDialogAnswerOptions, ElwoodDialogEvent } from "../../core/dialogs/types.ts";
 import { observeDialogNotifications } from "../../core/warnings/dialogs.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
@@ -9,7 +9,7 @@ import type { CodexEventMap } from "../session/types.ts";
 import { CodexWorkspaceTrustDiscovery } from "./discovery.ts";
 import type { WorkspaceTrustDiscoveryInput } from "./discovery-input.ts";
 import type { WorkspaceTrustFrame } from "./menu-frame.ts";
-import type { CodexTrustDialogRequest, ElwoodDialogEvent } from "./types.ts";
+import type { CodexTrustDialogRequest } from "./types.ts";
 import { codexTrustWriter } from "./writer.ts";
 
 type DialogListener = (event: ElwoodDialogEvent) => unknown;

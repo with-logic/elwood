@@ -65,7 +65,10 @@ export type ElwoodUpdateDialogRequest = {
   readonly choices: readonly ElwoodDialogChoice[];
 };
 
-/** A native dialog request, discriminated by `kind`. Only Codex sessions report updates. */
+/**
+ * A native dialog request, discriminated by `kind`. Only Codex sessions list and announce
+ * updates, which hosts answer at the terminal rather than with `answerDialog()`.
+ */
 export type ElwoodDialogRequest<Agent extends ElwoodAgentKind = "codex"> =
   | ElwoodTrustDialogRequest<Agent>
   | (Agent extends "codex" ? ElwoodUpdateDialogRequest : never);

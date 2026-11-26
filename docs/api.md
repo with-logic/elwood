@@ -194,9 +194,9 @@ acceptance, Back, or Quit. See the [Codex answer contract](../prd/05-api/5.13-di
 
 Codex sessions also list Codex's update offer as a `kind: "update"` request when
 Elwood's own skip does not answer it, for example after you type into the
-offer yourself. The request carries the installed and offered versions and the
-native choices. Answer it at the terminal. Check `request.kind` before reading
-trust fields. See [Codex update offers](../prd/05-api/5.13-dialogs.md#codex-update-offers).
+offer yourself. The request carries the native choices, plus the installed and
+offered versions when the banner names them. Answer it at the terminal. Check
+`request.kind` before reading trust fields. See [Codex update offers](../prd/05-api/5.13-dialogs.md#codex-update-offers).
 
 `sendMessage` is the adapter-neutral chat-loop operation. If the session is
 ready it writes through the PTY immediately. If the session is alive but busy,

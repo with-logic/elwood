@@ -1,12 +1,17 @@
 /**
- * A Codex session's native dialogs: its workspace trust question and its update offer
- * share `listDialogs`, `dialog` events, and `answerDialog` (PRD §5.13, C-ATTN-07, C-ATTN-08, C-ATTN-12).
+ * A Codex session's native dialogs: its workspace trust question and its update offer share
+ * `listDialogs` and `dialog` events. `answerDialog` answers trust only; an update request ID
+ * rejects with `dialog_not_found`, since hosts answer the offer at the terminal (PRD §5.13,
+ * C-ATTN-07, C-ATTN-08, C-ATTN-12).
  */
-import type { ElwoodDialogAnswerOptions } from "../../core/dialogs/types.ts";
+import type {
+  ElwoodDialogAnswerOptions,
+  ElwoodDialogEvent,
+  ElwoodDialogRequest,
+} from "../../core/dialogs/types.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { CodexUpdateDialogs } from "../update/dialogs.ts";
 import { CodexWorkspaceTrustDialogs } from "../workspace-trust/dialogs.ts";
-import type { ElwoodDialogEvent, ElwoodDialogRequest } from "../workspace-trust/types.ts";
 
 type DialogListener = (event: ElwoodDialogEvent) => unknown;
 type CodexSessionDialogsInput = ConstructorParameters<typeof CodexWorkspaceTrustDialogs>[0] & {

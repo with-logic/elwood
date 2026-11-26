@@ -84,9 +84,9 @@ test("C-ATTN-12 a listener added by a replayed listener waits for a fresh read o
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
-        ["closed", "unavailable"],
+        ["closed", id, "unavailable"],
       ]);
-    expect(summary(added)).toEqual([["closed", "unavailable"]]);
+    expect(summary(added)).toEqual([["closed", id, "unavailable"]]);
   });
 });
 

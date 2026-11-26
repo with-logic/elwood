@@ -96,7 +96,7 @@ test("C-API-72 C-ATTN-12 a discovery failure while replaying to a late listener 
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
-        ["closed", "unavailable"],
+        ["closed", id, "unavailable"],
       ]);
     expect(await escaped.settle()).toEqual([]);
     expect(warningCodes(warnings)).toEqual(["frame_observer_failed"]);

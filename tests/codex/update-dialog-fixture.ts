@@ -20,9 +20,13 @@ export const offer = capturedFrame("codex-0.172.0/update/offer-standalone-100x30
 /** The same offer for a newer release: a different offer, not a redraw. */
 export const newerOffer = offer.replace("→ 99.0.0", "→ 99.1.0");
 
-/** Each event's phase, then its request ID when raised or its reason when closed. */
+/** Each event's phase and request ID, then its reason when closed. */
 export const summary = (events: readonly ElwoodDialogEvent[]) =>
-  events.map((event) => [event.phase, event.phase === "closed" ? event.reason : event.request.id]);
+  events.map((event) =>
+    event.phase === "closed"
+      ? [event.phase, event.request.id, event.reason]
+      : [event.phase, event.request.id],
+  );
 
 /** `value`, or a failure that names what is missing rather than a TypeError on its use. */
 export function required<T>(value: T | undefined, what: string): T {

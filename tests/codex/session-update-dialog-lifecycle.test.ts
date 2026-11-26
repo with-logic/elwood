@@ -3,7 +3,8 @@
  * (PRD §5.13 "Codex update offers", C-ATTN-12).
  */
 
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { firstKeyDelayMs } from "../../src/codex/update-prompt.ts";
 import type { CodexSessionApi } from "../../src/index.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
 import { resetFakes } from "./helpers.ts";
@@ -13,12 +14,15 @@ import {
   listed,
   newerOffer,
   offer,
-  openCodex,
+  openOnFakeTimers,
   required,
   summary,
 } from "./update-dialog-fixture.ts";
 
-afterEach(resetFakes);
+afterEach(() => {
+  vi.useRealTimers();
+  resetFakes();
+});
 
 /** Skip before the action is never selected, so Elwood leaves this offer to the host. */
 const noSafeChoice = [
@@ -42,7 +46,7 @@ test("C-ATTN-12 a different offer replaces the listed one with new IDs", async (
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
-        ["closed", "replaced"],
+        ["closed", id, "replaced"],
         ["raised", next.id],
       ]);
   });
@@ -60,7 +64,7 @@ test("C-ATTN-12 unsettled output keeps the request, and a settled banner without
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
-        ["closed", "unavailable"],
+        ["closed", id, "unavailable"],
       ]);
   });
 });
@@ -75,7 +79,7 @@ test("C-ATTN-12 a settled screen without the banner clears the request, even bef
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
-        ["closed", "cleared"],
+        ["closed", id, "cleared"],
       ]);
   });
 });
@@ -91,7 +95,7 @@ test.each([
       .poll(() => summary(events))
       .toEqual([
         ["raised", id],
-        ["closed", "unavailable"],
+        ["closed", id, "unavailable"],
       ]);
     await show(offer);
     expect(await session.listDialogs()).toEqual([]);
@@ -105,27 +109,30 @@ test("C-ATTN-12 closing the session closes the listed request", async () => {
     .poll(() => summary(events))
     .toEqual([
       ["raised", id],
-      ["closed", "unavailable"],
+      ["closed", id, "unavailable"],
     ]);
 });
 
-test("C-ATTN-12 a new skip of the offer takes it back from the host", async () => {
-  const { session, events, show } = await openCodex();
+test("C-ATTN-12 an offer with no safe choice is listed with nothing written, until a new skip takes it back", async () => {
+  const { session, pty, events, paintOffer } = await openOnFakeTimers();
   await closing(session, async () => {
-    await show(noSafeChoice);
+    await paintOffer(noSafeChoice);
     const request = await firstListed(session);
-    expect(request?.choices.map((choice) => choice.label)).toEqual([
+    expect(request.choices.map((choice) => choice.label)).toEqual([
       "Skip",
       "Update now (runs `npm install -g @openai/codex`)",
     ]);
-    await show(offer);
+    // Past the first-key wait and every retry, Elwood types nothing on this offer.
+    await vi.advanceTimersByTimeAsync(firstKeyDelayMs + 5_000);
+    expect(pty.writes).toEqual([]);
+    expect(await session.listDialogs()).toEqual([request]);
+    await paintOffer(offer);
     expect(await session.listDialogs()).toEqual([]);
-    await expect
-      .poll(() => summary(events))
-      .toEqual([
-        ["raised", request.id],
-        ["closed", "unavailable"],
-      ]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(summary(events)).toEqual([
+      ["raised", request.id],
+      ["closed", request.id, "unavailable"],
+    ]);
   });
 });
 

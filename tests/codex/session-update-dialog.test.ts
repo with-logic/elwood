@@ -116,11 +116,14 @@ test("C-ATTN-12 an earlier skip that settles while a newer one is pending keeps 
     // A different offer is a new appearance: Elwood starts a second skip while the first
     // waits for its key, and the first then settles without writing.
     await paintOffer(newerOffer);
-    for (let elapsed = 0; elapsed < firstKeyDelayMs + 500; elapsed += 50) {
-      await vi.advanceTimersByTimeAsync(50);
-      expect(await session.listDialogs()).toEqual([]);
-    }
+    // Each skip's key waits 500 ms from its own frame, and the frames are 50 ms apart. Here
+    // the first skip has settled without writing, and the second has not written yet.
+    await vi.advanceTimersByTimeAsync(firstKeyDelayMs - 75);
+    expect(pty.writes).toEqual([]);
+    expect(await session.listDialogs()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(100);
     expect(pty.writes).toEqual(["2"]);
+    expect(await session.listDialogs()).toEqual([]);
     await paint(skippedComposer);
     expect(await session.listDialogs()).toEqual([]);
     expect(events).toEqual([]);

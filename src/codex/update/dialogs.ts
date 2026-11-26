@@ -5,7 +5,7 @@
  * verified, with delivery revisions for the writer, while an offer is read from the
  * settled frame alone. Both deliver through the session's one `observeNotifications`.
  */
-import type { ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";
+import type { ElwoodDialogEvent, ElwoodUpdateDialogRequest } from "../../core/dialogs/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import {
   nativeRenderEvidenceIntact,
@@ -15,7 +15,6 @@ import {
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { CodexEventMap } from "../session/types.ts";
 import type { SettledCodexStartupOutcome } from "../startup-prompts.ts";
-import type { ElwoodDialogEvent } from "../workspace-trust/types.ts";
 import {
   type CodexUpdateOffer,
   createCodexUpdateDialogRequest,
