@@ -1,10 +1,10 @@
 /**
- * Codex's initial-readiness gate: its deadline needs the configured composer (the native
- * status footer, whose effort label, for a session that requested an effort Codex labels, is
- * no longer `default` once Codex applied it, or any footer once the wait for that label ends:
- * 50 seconds after launch, or at the deadline, 10 seconds after the first frame, when that is
- * later), and missing evidence at the separate 60-second backstop is reported as a
- * content-free warning (PRD §5.3, §5.7, C-API-28).
+ * Codex's initial-readiness gate. Its deadline needs the configured composer: Codex's native
+ * status footer. When the session requests an effort Codex labels (`reasoningEffort`, else a
+ * `configOverrides` entry), the footer counts only once its label is not `default`, or once
+ * the wait for that label ends: 50 seconds after launch, or at the deadline, 10 seconds after
+ * the first frame, when that is later. Missing evidence at the separate 60-second backstop is
+ * reported as a content-free warning (PRD §5.3, §5.7, C-API-28).
  * Its header drawn alone, its boot composer, its resume placeholder and its footer before it
  * shows the requested effort are startup screens Codex draws before that composer, not
  * unrecognized ones (§5.4, C-ATTN-11).
@@ -18,19 +18,20 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import { createNativeBootFrameMatcher } from "../../runtime/readiness/boot-frame.ts";
 import { initialDeadlineMs } from "../../runtime/readiness/initial-ready.ts";
 import { createStartupReadinessGate } from "../../runtime/session/startup-readiness.ts";
+import { requestedCodexEffort } from "../config/effort.ts";
 import { codexReadinessEvidence } from "../screen/clearance.ts";
 import { codexFooterShowsEffort } from "../screen/footer.ts";
 import { codexUnconfiguredComposerVisible } from "../update/repaint.ts";
-import type { CodexEventMap } from "./types.ts";
+import type { CodexEventMap, StartCodexOptions } from "./types.ts";
 
 /** Codex's header drawn alone while it loads (C-ATTN-11). */
 export const isCodexBootFrame = createNativeBootFrameMatcher(/>_ OpenAI Codex \(v\d+\.\d+\.\d+/);
 
-/** The launch facts the gate reads: a resume, the session id and the requested effort. */
+/** The launch facts the gate reads: a resume, the session id and the options that set an effort. */
 export type CodexReadinessLaunch = {
   readonly resumed: boolean;
   readonly record: { readonly elwoodSessionId: string };
-  readonly options: { readonly reasoningEffort?: CodexReasoningEffort | undefined };
+  readonly options: Pick<StartCodexOptions, "reasoningEffort" | "configOverrides">;
 };
 
 /** Room left for a render still in flight before a default host wait can expire. */
@@ -128,7 +129,7 @@ export function createCodexReadinessGate(
         raw: "codex_effort_unconfirmed",
       },
     ]);
-  const check = codexConfiguredCheck(options.reasoningEffort, {
+  const check = codexConfiguredCheck(requestedCodexEffort(options), {
     onUnconfirmed: emitEffortUnconfirmed,
     onWaitEnded: () => gate.rereadFrame(),
   });

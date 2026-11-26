@@ -4143,9 +4143,34 @@ at the first turn, not at `thread/start`, so no transcript appears, and its `Ses
 hook is lazy too. The only file written as the configuration lands is
 `tui-thread-reference-capabilities/<thread id>` in `CODEX_HOME`, about 20 ms before it.
 Elwood does not read that file, and a resumed thread already has one. So readiness waits
-for a label other than `default` only when the session requested a `reasoningEffort` other
-than `none`. Without one, `ready` can still precede the configuration (§5.3), including
-when the effort comes from `configOverrides`, a profile or config.toml.
+for a label other than `default` only when the session's own `-c` arguments request an
+effort other than `none`: `reasoningEffort`, else a root `model_reasoning_effort` entry in
+`configOverrides`, which reaches Codex the same way. Without one, `ready` can still precede
+the configuration (§5.3), including when the effort comes from config.toml or a profile.
+
+**Which `-c` effort Codex 0.172 applies, and where it reads a profile.** With the pinned
+0.172.0 binary in the public question sandbox (`gpt-6-luna`), on 2026-11-26 at load averages
+20 to 62, reading the footer after the configuration landed and running no turn:
+
+- **Spellings.** `-c model_reasoning_effort=` followed by `"minimal"`, `'minimal'`, `minimal`,
+  ` = minimal`, `"minimal" # note` or `"""minimal"""` each read `gpt-6-luna minimal`. With two
+  entries, `"high"` then `"minimal"`, it read `minimal`: the last entry wins.
+- **Profile file.** `--profile deep` layers `$CODEX_HOME/deep.config.toml`. With
+  `model_reasoning_effort = "high"` there, the footer read `high`. A root
+  `-c model_reasoning_effort="low"`, whether from `reasoningEffort` or `configOverrides`,
+  beat it: the footer read `low`.
+- **Profile key.** `-c profiles.deep.model_reasoning_effort="low"` was ignored. The footer
+  read `high` with `--profile deep` and its file, `default` with `--profile deep` and no file,
+  and `default` with no profile.
+- **Legacy layout.** A root `profile = "deep"` key makes Codex exit 1 with "Error loading
+  configuration: legacy `profile = "deep"` config is no longer supported; use `--profile deep`
+  with `deep.config.toml` instead". `--profile deep` next to a `[profiles.deep]` table makes it
+  exit 1 with "--profile `deep` cannot be used while …/config.toml contains legacy
+  `profile = "deep"` or `[profiles.deep]` config; move those settings into
+  …/deep.config.toml and remove the legacy profile selector/table".
+
+So readiness reads only the last root `model_reasoning_effort` entry, in those spellings,
+and `reasoningEffort` over it (C-API-28).
 
 **Every requested effort but `none` gets a label once configured.** On `gpt-6-luna`, which
 lists `low` to `max`: `minimal`, `xhigh` and `max` read as themselves, and `ultra`, which it

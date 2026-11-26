@@ -5,7 +5,7 @@
  * `waitForStatus` can expire (PRD §5.3, §5.7, C-API-28).
  */
 import { afterEach, expect, test, vi } from "vitest";
-import { resumeCodex, startCodex } from "../../src/index.ts";
+import { resumeCodex, type StartCodexOptions, startCodex } from "../../src/index.ts";
 import {
   deadlineOnDefaultFooter,
   effortDefault,
@@ -23,10 +23,16 @@ afterEach(() => {
   resetFakes();
 });
 
-test("C-API-28 a requested effort holds ready until Codex shows it", async () => {
-  const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter({
-    reasoningEffort: "low",
-  });
+test.each([
+  { label: "reasoningEffort", options: { reasoningEffort: "low" } },
+  {
+    label: "a configOverrides entry",
+    options: { configOverrides: ["model_reasoning_effort=low"] },
+  },
+] as const)("C-API-28 an effort $label requests holds ready until Codex shows it", async ({
+  options,
+}) => {
+  const { session, warnings, activities, queued, pty } = await deadlineOnDefaultFooter(options);
   try {
     // Past the deadline, the footer waiting for the effort is Codex's own startup screen.
     expect(session.status).not.toBe("blocked");
@@ -43,11 +49,16 @@ test("C-API-28 a requested effort holds ready until Codex shows it", async () =>
   }
 });
 
-test.each([
+test.each<{ readonly label: string; readonly options: Partial<StartCodexOptions> }>([
   { label: "no effort", options: {} },
   {
-    label: "an effort only in configOverrides",
-    options: { configOverrides: ["model_reasoning_effort=low"] },
+    label: "reasoningEffort none over a configOverrides effort",
+    options: { reasoningEffort: "none", configOverrides: ["model_reasoning_effort=low"] },
+  },
+  {
+    // Codex 0.172 ignores this key even with the profile selected (docs/cli-behavior.md).
+    label: "only the selected profile's effort in configOverrides",
+    options: { profile: "fast", configOverrides: ['profiles.fast.model_reasoning_effort="low"'] },
   },
 ])("C-API-28 with $label the deadline marks ready on the default footer", async ({ options }) => {
   const { session, warnings, queued, pty } = await deadlineOnDefaultFooter(options);

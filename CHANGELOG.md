@@ -21,9 +21,9 @@ back each entry are listed in `prd/14-conformance.md`.
   `codex_effort_unconfirmed` warning, so a host waiting for `ready` with
   `waitForStatus`'s default 60-second timeout gets `ready` rather than `wait_timeout`
   when Codex drew its first frame within 40 seconds and no blocking startup dialog holds
-  readiness. With no `reasoningEffort`, or
-  `none`, `ready` can still come first, including when the effort comes from
-  `configOverrides`, a profile or config.toml.
+  readiness. An effort set by a `model_reasoning_effort` entry in `configOverrides` is
+  waited for the same way. With neither, or `none`, `ready` can still come first,
+  including when the effort comes from config.toml or a profile.
 
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed

@@ -7,6 +7,11 @@
 import { claudeLaunchArguments } from "../../claude/command.ts";
 import { codexEffortArguments, codexLaunchArguments } from "../../codex/command.ts";
 import { elwoodError } from "../../core/errors.ts";
+import {
+  claudeReasoningEfforts,
+  codexReasoningEfforts,
+  knownReasoningEffort,
+} from "../../core/reasoning-effort.ts";
 import { launchArgv } from "../../runtime/launch-arguments.ts";
 import {
   claudeLaunchPosture,
@@ -16,7 +21,6 @@ import {
 import type { SessionRecord } from "../../state/store.ts";
 import { optional } from "../request/values.ts";
 import type { EffectiveRunRequest } from "../types.ts";
-import { claudeEffort, codexEffort } from "./effort.ts";
 import type { InteractiveLaunch } from "./spawn.ts";
 
 /**
@@ -43,7 +47,10 @@ export function interactiveLaunch(
         claudeLaunchArguments(
           {
             ...optional(request.model, "model"),
-            ...optional(claudeEffort(request.reasoningEffort), "reasoningEffort"),
+            ...optional(
+              knownReasoningEffort(request.reasoningEffort, claudeReasoningEfforts),
+              "reasoningEffort",
+            ),
             ...posture,
           },
           resumeId,
@@ -69,7 +76,7 @@ export function interactiveLaunch(
         cwd: request.cwd,
         ...(stored === undefined ? {} : { resumeId: conversationId(stored, "codex") }),
       }),
-      ...codexEffortArguments(codexEffort(request.reasoningEffort)),
+      ...codexEffortArguments(knownReasoningEffort(request.reasoningEffort, codexReasoningEfforts)),
     ]),
     cwd: request.cwd,
   };
