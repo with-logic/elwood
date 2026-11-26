@@ -1,4 +1,5 @@
 /** Match blank authenticated Claude hooks to committed user records (PRD §5.4). */
+import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
 import type { UserPromptPresentation } from "../../core/activity/prompt-presentation.ts";
 import { isRecord } from "../../core/predicates.ts";
@@ -14,6 +15,8 @@ export type UserPromptHookEvidence = {
   readonly path: string | undefined;
   readonly turnId: string;
   readonly hasText: boolean;
+  /** The native hook prompt, which tells a queued message from its running turn's prompt. */
+  readonly prompt?: string | undefined;
   readonly pasteEnvelopeId?: string | undefined;
 };
 
@@ -35,6 +38,9 @@ type PromptEvidence = { readonly path: string } & (RecordEvidence | HookEvidence
 export class ClaudeUserPrompts {
   private readonly entries = new Map<string, PromptEvidence>();
   private readonly shown = new Set<string>();
+  // A prompt ID can name two submissions: Claude fires the hook for a message queued during a
+  // running turn with that turn's ID. The text tells them apart.
+  private readonly shownPrompts = new Set<string>();
   private retainedBytes = 0;
   private readonly emit: (prompt: RecoveredUserPrompt) => void;
 
@@ -55,18 +61,19 @@ export class ClaudeUserPrompts {
 
   /** Returns whether a nonblank hook still needs user activity, even without a path. */
   observeHook(
-    { path, turnId, hasText, pasteEnvelopeId }: UserPromptHookEvidence,
+    { path, turnId, hasText, prompt, pasteEnvelopeId }: UserPromptHookEvidence,
     canRecover: boolean,
   ): boolean {
     if (Buffer.byteLength(turnId) > maxIdentifierBytes) return hasText;
-    if (this.shown.has(turnId)) return false;
     const identity = promptLocation(canRecover ? path : undefined, turnId);
     if (hasText) {
-      this.rememberShown(turnId);
+      const shownPrompt = promptKey(turnId, prompt ?? "");
+      if (this.shownPrompts.has(shownPrompt)) return false;
+      this.rememberShown(turnId, shownPrompt);
       this.remove(identity?.key);
       return true;
     }
-    if (!identity) return false;
+    if (this.shown.has(turnId) || !identity) return false;
     const { key } = identity;
     const known = this.entries.get(key);
     if (known?.kind === "record") {
@@ -129,7 +136,7 @@ export class ClaudeUserPrompts {
     prompt: UserPromptRecord,
     pasteEnvelopeId: string | undefined,
   ): void {
-    this.rememberShown(turnId);
+    this.rememberShown(turnId, promptKey(turnId, prompt.text));
     this.remove(key);
     this.emit({
       path,
@@ -145,9 +152,12 @@ export class ClaudeUserPrompts {
     });
   }
 
-  private rememberShown(turnId: string): void {
+  private rememberShown(turnId: string, shownPrompt: string): void {
     this.shown.add(turnId);
+    this.shownPrompts.add(shownPrompt);
     if (this.shown.size > maxEntries) this.shown.delete(this.shown.values().next().value!);
+    if (this.shownPrompts.size > maxEntries)
+      this.shownPrompts.delete(this.shownPrompts.values().next().value!);
   }
 
   private remember(key: string, evidence: PromptEvidence): void {
@@ -164,6 +174,10 @@ export class ClaudeUserPrompts {
     if (evidence?.kind === "record") this.retainedBytes -= evidence.retainedSizeBytes;
     this.entries.delete(key);
   }
+}
+
+function promptKey(turnId: string, prompt: string): string {
+  return JSON.stringify([turnId, createHash("sha256").update(prompt).digest("base64")]);
 }
 
 function promptLocation(path: string | undefined, turnId: string) {

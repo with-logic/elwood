@@ -100,10 +100,14 @@ test("C-API-71 a reused Claude prompt ID cannot claim a second caller ID", async
   await session.sendGuidance(" next ", { sendId: "two" });
   await submit(" next", "reused");
   await submit(" next", "distinct");
+  // Claude reuses the running turn's ID for a queued message: it is shown, without caller evidence.
   expect(messages()).toMatchObject([
     { text: " first ", sendId: "one" },
+    { text: " next", turnId: "reused" },
     { text: " next ", sendId: "two" },
   ]);
+  expect(messages()[1]).not.toHaveProperty("sendId");
+  expect(messages()[1]).not.toHaveProperty("promptProvenance");
 });
 
 test("C-API-71 a transcript warning cannot revoke an already matched API prompt", async () => {

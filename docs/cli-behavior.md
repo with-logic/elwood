@@ -1898,6 +1898,12 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   message left the composer must read only the last `❯` line, because the queued row
   also starts with `❯` and holds the message. Observed with `sendGuidance` in a private
   config dir, 2026-10-26 (C-API-37).
+- Claude 2.1.332 fires `UserPromptSubmit` for that queued message when it queues it, about
+  130 ms after the Enter. The hook's `prompt_id` is the RUNNING turn's, and its `prompt` is
+  the guidance text. The committed transcript gets a `queue-operation` `enqueue` record at the
+  same time. Elwood used to treat the reused ID as a duplicate and drop the guidance's
+  `user_message`; it now dedupes on ID and exact text. Measured with `sendGuidance` in two
+  private-config sessions, 2026-11-25 (C-API-62).
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.

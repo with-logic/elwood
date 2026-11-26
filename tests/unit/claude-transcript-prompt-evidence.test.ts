@@ -76,6 +76,20 @@ test("bounds retained history and keeps live text when native metadata exceeds i
   expect(prompts.observeHook({ path: path, turnId: "retained", hasText: true }, true)).toBe(true);
 });
 
+test("C-API-62 a queued prompt that reuses its running turn's prompt ID keeps its message", () => {
+  const events: unknown[] = [];
+  const prompts = new ClaudeUserPrompts((event) => events.push(event));
+  const hook = (prompt: string) =>
+    prompts.observeHook({ path, turnId: "running", hasText: true, prompt }, true);
+  expect(hook("Write an essay.")).toBe(true);
+  expect(hook("Coordinator note: end with MARK.")).toBe(true);
+  // One submission seen twice, or its transcript copy, is still one message.
+  expect(hook("Coordinator note: end with MARK.")).toBe(false);
+  prompts.observeForwardRecord(path, "running", record("running", "Write an essay."));
+  expect(prompts.observeHook({ path, turnId: "running", hasText: false }, true)).toBe(false);
+  expect(events).toEqual([]);
+});
+
 test("requires user text and excludes transcript metadata and tool output", () => {
   expect(
     userPromptRecord({ ...record("id"), message: { role: "assistant", content: "wrong role" } }),
@@ -118,7 +132,14 @@ test("C-API-63 a malformed live identity stops transcript correlation without su
     appendFileSync(path, `${JSON.stringify(nativeUser("first", "must stay hidden"))}\n`);
     watcher.scan();
     expect(events).toHaveLength(1);
-    expect(watcher.observeUserPromptHook({ path, turnId: "shown", hasText: true })).toBe(false);
+    expect(
+      watcher.observeUserPromptHook({
+        path,
+        turnId: "shown",
+        hasText: true,
+        prompt: "delivered once",
+      }),
+    ).toBe(false);
     expect(watcher.observeUserPromptHook({ path, turnId: "first", hasText: true })).toBe(true);
   } finally {
     watcher.finish();

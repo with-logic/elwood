@@ -1,14 +1,14 @@
 /**
  * Real Claude and Codex TUI intervention coverage for state-aware guidance.
- * Implements C-API-37, C-E2E-02, and C-E2E-03. Consumption is asserted via the
+ * Implements C-API-37, C-API-62, C-E2E-02, and C-E2E-03. Consumption is asserted via the
  * signals the CLIs actually provide for MID-TURN steering — the guidance overtakes
  * readiness (no intervening `ready`), `sendGuidance` resolves after the submitting
  * Enter, the marker renders in the live TUI, AND the marker is no longer sitting on
  * the composer prompt line (proving it was SUBMITTED, not merely pasted — a
  * regression that omits the submitting Enter would leave it staged in the composer).
- * A `UserPromptSubmit` hook is NOT asserted: the real CLIs do not fire it for text
- * injected into an active turn (verified empirically), so requiring it made this
- * suite deterministically red.
+ * Claude Code 2.1.332 fires `UserPromptSubmit` when it queues the guidance, with the
+ * running turn's prompt ID, so the Claude case also requires the guidance's own
+ * `user_message`. The Codex case does not require a hook.
  */
 
 import assert from "node:assert/strict";
@@ -109,8 +109,17 @@ test("C-API-37 real Claude receives guidance during an active turn", {
     autotrust: true,
     hooks: {},
   });
+  const userMessages: string[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "user_message" && event.source === "hook") userMessages.push(event.text);
+  });
   try {
     const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CLAUDE_NOW", "❯");
+    await waitFor(
+      () => userMessages.some((text) => text.includes("ELWOOD_GUIDANCE_CLAUDE_NOW")) || undefined,
+      "the guidance's own user_message, though Claude reuses the running turn's prompt ID",
+      30_000,
+    );
     assert.ok(
       !outcome.transitionsDuringGuidance.includes("ready"),
       "guidance settled into the live running turn without waiting for a ready transition",

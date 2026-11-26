@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Claude guidance sent during a running turn now produces its `user_message`
+  activity. Claude Code 2.1.332 fires the guidance's `UserPromptSubmit` with the
+  running turn's prompt ID, which Elwood had treated as a duplicate.
+
 ## [0.8.0] - 2026-11-25
 
 - Codex `turn_failure` activity now reports `quota_or_credit`, not `usage_limit`,
