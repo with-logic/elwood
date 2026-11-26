@@ -18,7 +18,8 @@ import {
 import { ClaudeTranscriptTurns } from "./turn-identity.ts";
 import { claudeTokenUsage } from "./usage.ts";
 import { claudeUsageLimitWarning } from "./usage-limit.ts";
-import { ClaudeUserPrompts, type RecoveredUserPrompt } from "./user-prompts.ts";
+import type { RecoveredUserPrompt } from "./user-prompt-types.ts";
+import { ClaudeUserPrompts } from "./user-prompts.ts";
 
 type LineSource = "history" | "rewind" | "forward";
 
@@ -104,13 +105,20 @@ export class LineEmitter {
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
     if (startedOversizedDrop) this.drops.drop(path, "oversized");
-    const source = cursor.lastReadWasReplay ? "rewind" : "forward";
+    const source = this.liveSource(cursor);
     for (const line of lines) this.publishLine(path, line, source);
   }
 
   /** Emit one line taken as complete (a transcript's last, un-terminated record at its end). */
   emitLine(path: string, line: string, cursor?: TranscriptCursor): void {
-    this.publishLine(path, line, cursor?.lastReadWasReplay ? "rewind" : "forward");
+    this.publishLine(path, line, this.liveSource(cursor));
+  }
+
+  /** A replayed prefix can repeat old delivery records, so no queued message stays pending. */
+  private liveSource(cursor: TranscriptCursor | undefined): LineSource {
+    if (!cursor?.lastReadWasReplay) return "forward";
+    this.userPrompts.forgetQueued();
+    return "rewind";
   }
 
   private publishLine(path: string, line: string, source: LineSource): void {
@@ -122,8 +130,7 @@ export class LineEmitter {
     }
     const turnId = this.turns.observe(path, item);
     if (this.turns.correlationDisabled) this.userPrompts.clearUnpaired();
-    if (source !== "history" && turnId !== undefined)
-      this.userPrompts.observeForwardRecord(path, turnId, item);
+    if (source !== "history") this.userPrompts.observeForwardRecord(path, turnId, item);
     const summaries = summarizeClaudeRecord(item);
     const tokenUsage = claudeTokenUsage(item);
     if (summaries.length === 0) {
