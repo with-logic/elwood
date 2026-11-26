@@ -12,7 +12,10 @@ import {
   claudeModelPickerHeader,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
-import { isModelViewportCandidate } from "../core/models/viewport/candidate.ts";
+import {
+  isModelViewportCandidate,
+  isVouchedModelViewportCandidate,
+} from "../core/models/viewport/candidate.ts";
 import { parseModelViewport } from "../core/models/viewport/parse.ts";
 import { claudeLastComposerClearance } from "./composer/last.ts";
 import {
@@ -35,6 +38,8 @@ export const claudeModelPicker: ModelPickerSpec = {
     isModelViewportCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, pickerGrammar) ||
     isClaudeSwitchShell(text),
+  isOwnPickerWindow: (text, authority) =>
+    authority.opened && isVouchedModelViewportCandidate(text, pickerGrammar),
   hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
   isCallerDialog: (text) => parseClaudeSwitchConfirmation(text)?.isCacheWarning === false,
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.

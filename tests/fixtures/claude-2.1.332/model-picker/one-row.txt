@@ -1,0 +1,9 @@
+  Select model
+  Your pick is the default for new sessions. For other models, use --model.
+
+  ❯ 1.  Default (recommended) ✔  Opus 5.5 · Best for everyday, complex tasks
+    ↓ 5 more
+
+  ◐ Medium effort (default) ←/→ to adjust
+
+  s to use this session only · Enter to save · Esc to cancel

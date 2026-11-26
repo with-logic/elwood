@@ -1,7 +1,7 @@
 /** Parses counted Claude windows and uncounted Codex windows (PRD §5.3, C-API-23/24). */
 import type { ParsedModelPicker } from "../rows.ts";
 import { validPositions } from "./positions.ts";
-import { readViewport } from "./read.ts";
+import { readViewport, windowVouched } from "./read.ts";
 import type { ViewportGrammar } from "./types.ts";
 
 /** Undefined leaves older layouts to the existing attached-marker grammar. */
@@ -13,7 +13,11 @@ export function parseModelViewport(
   if (read === undefined) return undefined;
   const { parsed, block, footer, modern, offset, selectedDisclosureExpanded } = read;
   const { items, tail, above, remainingBelow, cursorItemIndex } = block;
-  if (parsed.rows.length < 2 || !grammar.validTail(tail, footer, selectedDisclosureExpanded))
+  // A short pane's window can hold one item (a model row, or only the disclosure) or a row
+  // beside the disclosure; a counted scroll marker then vouches for the items it hides.
+  if (
+    !(windowVouched(read, grammar) && grammar.validTail(tail, footer, selectedDisclosureExpanded))
+  )
     return undefined;
   if (!modern) return undefined;
   if (

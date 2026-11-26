@@ -1,0 +1,10 @@
+  Select model
+  Your pick is the default for new sessions. For other models, use --model.
+    ↑ 4 more
+    5.  Haiku 5.5                Fastest for quick answers
+  ❯ ▸   More models
+
+
+
+
+  Enter to expand · Esc to cancel
