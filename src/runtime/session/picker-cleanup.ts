@@ -3,6 +3,7 @@
  * open, or report that one survived so queued input stays held (PRD §5.3, C-API-55).
  */
 import { delay } from "../../core/delay.ts";
+import { ElwoodError, elwoodError } from "../../core/errors.ts";
 import {
   behindReceivedOutputBarrier,
   type ObservedTerminal,
@@ -21,6 +22,8 @@ export type Progress = {
   dialogSeen: boolean;
   /** A non-Escape key can accept a stage whose follow-up dialog paints late. */
   keyWritten: boolean;
+  /** Cleanup found our picker's window in a layout no grammar parses (named in the rejection). */
+  unparsedPicker?: boolean;
 };
 
 const cleanupMs = 1_000;
@@ -57,8 +60,9 @@ export const ours: ModelDialogAuthority = { opened: true };
  * visible at the bound keeps queued input held.
  *
  * Resolves `true` once no dialog of ours is recognizable (or the session terminated). That
- * is NOT positive composer clearance: a blank or half-painted repaint is unrecognizable
- * too, so the caller decides whether what is left on screen is kept as a survivor.
+ * is NOT positive composer clearance: a blank repaint, or one showing neither a dialog nor
+ * our picker's window, is unrecognizable too, so the caller decides whether what is left on
+ * screen is kept as a survivor.
  */
 export async function cleanUpDialog(
   source: ObservedTerminal,
@@ -67,7 +71,16 @@ export async function cleanUpDialog(
   closed: AbortSignal,
 ): Promise<boolean> {
   const terminal = behindReceivedOutputBarrier(source, abortable(source, closed));
-  const stageOf = (text: string) => spec.activeDialog(text, ours) ?? unparsedPicker(spec, text);
+  // Our own picker in a layout no grammar parses, such as one whose hint row falls below a
+  // short pane, is still the picker stage: the transaction submitted `/model` in its slot,
+  // so ownership makes it ours, and its own window tells it from a follow-up stage or a
+  // human's prompt under a stale title. A parse failure then never strands it (C-API-55).
+  const stageOf = (text: string): ModelDialogStage | undefined => {
+    const stage = spec.activeDialog(text, ours);
+    if (stage !== undefined || !spec.isPickerWindow(text, ours)) return stage;
+    progress.unparsedPicker = true;
+    return "picker";
+  };
   const isActive = (text: string) => stageOf(text) !== undefined;
   let escaped = progress.escapeSentTo;
   let clearStreak = 0;
@@ -120,14 +133,13 @@ export async function cleanUpDialog(
   return lateDialogPossible;
 }
 /**
- * Our own picker in a layout the grammar cannot parse: a model-dialog candidate at the
- * bottom of the screen that is not the caller's dialog. Cleanup runs only for a transaction
- * that submitted `/model` in its exclusive slot with no caller input since, so ownership,
- * not recognition, makes it ours. It is the picker stage, owed that stage's one Escape;
- * otherwise a parse failure would leave the picker open and queued input held (C-API-55).
+ * The operation's rejection once cleanup found its picker unparsed: the layout is the likely
+ * cause, which a bare timeout would hide. Only the message changes; the code stays.
  */
-function unparsedPicker(spec: ModelPickerSpec, text: string): ModelDialogStage | undefined {
-  return spec.isCandidate(text) && !spec.isCallerDialog(text) ? "picker" : undefined;
+export function unparsedPickerFailure(spec: ModelPickerSpec, error: unknown): unknown {
+  if (!(error instanceof ElwoodError) || error.code !== "model_automation_failed") return error;
+  const cause = `The ${spec.agent} model picker was open in a layout Elwood could not parse, such as a pane too short for its hint row.`;
+  return elwoodError("model_automation_failed", `${error.message} ${cause}`, error.details);
 }
 
 /** Reads and writes throw once `signal` aborts, so nothing reaches a terminated PTY. */

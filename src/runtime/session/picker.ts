@@ -3,7 +3,14 @@ import type { ControlQueue } from "../../core/control-queue/index.ts";
 import { elwoodError } from "../../core/errors.ts";
 import { behindReceivedOutputBarrier, type ObservedTerminal } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
-import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
+import {
+  abortable,
+  cleanUpDialog,
+  escapeKey,
+  ours,
+  type Progress,
+  unparsedPickerFailure,
+} from "./picker-cleanup.ts";
 import { PickerHold } from "./picker-hold.ts";
 
 type PickerDeps = {
@@ -117,7 +124,7 @@ export class PickerTransactions {
           } catch (error) {
             if (!ownership.aborted && progress.commandSubmitted)
               await this.cleanUp(spec, progress, ownership);
-            throw error;
+            throw progress.unparsedPicker ? unparsedPickerFailure(spec, error) : error;
           } finally {
             human?.removeEventListener("abort", revoked);
             this.active = undefined;

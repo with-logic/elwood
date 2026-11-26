@@ -141,7 +141,10 @@ export function guardedPickerHarness(
   holds.picker = picker;
   queue.markReady();
   const delivered = (payload: string) => writes.filter((write) => write.includes(payload)).length;
-  return { screen, writes, queue, picker, delivered };
+  /** An operation that fails with `dialog` still on screen, rejecting with `error`. */
+  const failWith = (dialog: string, error?: unknown) =>
+    failOperation(picker, screen, spec, dialog, "list_models", error);
+  return { screen, writes, queue, picker, delivered, failWith };
 }
 
 /** `react` scripts how the fake CLI repaints after each command or key Elwood writes. */
@@ -165,13 +168,26 @@ export function cleanupHarness(
   );
   const picker = transactions(terminal, queue, spec);
   queue.markReady();
-  /** An operation that fails with `dialog` still on screen. */
-  const failWith = (dialog: string) =>
-    picker.run("set_model", spec, 5000, async (io) => {
-      await io.submit("/model", new AbortController().signal);
-      screen.text = dialog;
-      io.terminal.snapshot();
-      throw failure;
-    });
+  const failWith = (dialog: string) => failOperation(picker, screen, spec, dialog);
   return { screen, writes, leaked, queue, picker, failWith };
+}
+
+/**
+ * An operation that submits `/model`, then fails with `dialog` on screen. Its read records a
+ * recognizable dialog as seen, as the operation's own reads do.
+ */
+function failOperation(
+  picker: PickerTransactions,
+  screen: Screen,
+  spec: ModelPickerSpec,
+  dialog: string,
+  kind: "list_models" | "set_model" = "set_model",
+  error: unknown = failure,
+) {
+  return picker.run(kind, spec, 5000, async (io) => {
+    await io.submit("/model", new AbortController().signal);
+    screen.text = dialog;
+    io.terminal.snapshot();
+    throw error;
+  });
 }

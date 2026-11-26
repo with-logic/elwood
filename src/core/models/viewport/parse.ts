@@ -13,10 +13,11 @@ export function parseModelViewport(
   if (read === undefined) return undefined;
   const { parsed, block, footer, modern, offset, selectedDisclosureExpanded } = read;
   const { items, tail, above, below, remainingBelow, cursorItemIndex } = block;
-  // A short pane's window can hold one model row, or only the disclosure; a scroll marker
-  // then vouches for the rows it hides (Claude 2.1.332 below about 22 rows).
-  const rowsVouched = parsed.rows.length >= 2 || (items.length > 0 && (above || below));
-  if (!(rowsVouched && grammar.validTail(tail, footer, selectedDisclosureExpanded)))
+  // A short pane's window can hold one item (a model row, or only the disclosure) or a row
+  // beside the disclosure; a counted scroll marker then vouches for the items it hides
+  // (Claude 2.1.332 below about 22 rows). Codex's bare arrows count nothing, so never vouch.
+  const windowVouched = parsed.rows.length >= 2 || (grammar.countedMarkers && (above || below));
+  if (!(windowVouched && grammar.validTail(tail, footer, selectedDisclosureExpanded)))
     return undefined;
   if (!modern) return undefined;
   if (

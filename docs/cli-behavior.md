@@ -641,7 +641,8 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the region grammar recognizes the complete dialog, footer included — the same check
   every key write passes. A picker that never completes is never written to, because a
   bare header is untrusted (the agent can print one): the operation fails, and failure
-  cleanup Escapes the dialog once it is recognizable. Cleanup's release is not proof the
+  cleanup Escapes the dialog once it is recognizable or shows the picker's own window
+  (rows and markers under its title, as a short pane cuts its hint row). Cleanup's release is not proof the
   picker is gone either: a blank or half-painted frame matches neither grammar, and the
   picker can paint again after it. So once the operation or its cleanup has seen its
   dialog, or while the picker header is up, a cleanup that ends on anything short of a
@@ -3755,8 +3756,9 @@ initialization, not a change to which native rows Elwood returns.
 
 Claude 2.1.332 sizes the model picker's window to the pane. With the 14-row served
 catalog at 100 columns, every model fit at 30 and 24 rows. At 21 rows and below, a
-window held two items or fewer: at 12 to 14 rows a single model row (`❯ 1.  Default …`
-over `↓ 5 more`), and at 16 to 21 rows the window could end as `↑ 4 more`, `5.  Haiku
+window held two items or fewer: at 12 to 14 rows a single item, a model row (`❯ 1.
+Default …` over `↓ 5 more`) or only the disclosure (`↑ 5 more` over `❯ ▸   More
+models`), and at 16 to 21 rows the window could end as `↑ 4 more`, `5.  Haiku
 5.5`, `❯ ▸   More models`. Elwood's window parser required two model rows. Until a
 counted marker could vouch for a one-row window, `listModels` and `setModel` timed out
 at 21, 19, 17, 16, 14, 12 and 10 rows. At 30 rows both passed. Each failure left the
@@ -3766,7 +3768,10 @@ queued input stayed held until a human pressed Escape.
 At 10 rows the picker's hint row (`s to use this session only · Enter to save · Esc
 to cancel`) falls below the pane. No grammar parses that frame, so `listModels` still
 fails there. Cleanup now closes the picker by ownership instead of recognition, and
-queued input is released. The captures are in
+queued input is released. The frame still shows the picker's own window, rows and counted
+markers under its title, which tells it from a follow-up stage or a human's prompt under a
+stale title; the rejection names the unparsed layout. A walk at 100x12 finishes inside
+the default 20 s timeout, which the short-pane e2e uses. The captures are in
 `tests/fixtures/claude-2.1.332/model-picker/`. C-API-23, C-API-24, C-API-55.
 
 ### Claude 2.1.329 grouped questions (2026-11-20)

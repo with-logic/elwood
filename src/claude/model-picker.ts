@@ -35,6 +35,8 @@ export const claudeModelPicker: ModelPickerSpec = {
     isModelViewportCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, pickerGrammar) ||
     isClaudeSwitchShell(text),
+  isPickerWindow: (text, authority) =>
+    authority.opened && isModelViewportCandidate(text, pickerGrammar),
   hasPickerHeader: (text) => claudeModelPickerHeader.test(text),
   isCallerDialog: (text) => parseClaudeSwitchConfirmation(text)?.isCacheWarning === false,
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.

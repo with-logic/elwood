@@ -36,6 +36,9 @@ export const codexModelPicker: ModelPickerSpec = {
     isModelViewportCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, pickerGrammar) ||
     bottomDialogCandidate(text, reasoningGrammar),
+  // The reasoning screen is the follow-up stage, never the picker's window.
+  isPickerWindow: (text, authority) =>
+    authority.opened && isModelViewportCandidate(text, pickerGrammar),
   hasPickerHeader: (text) => codexModelPickerHeader.test(text),
   // Codex's switch has no dialog of the caller's own to replace the picker.
   isCallerDialog: () => false,

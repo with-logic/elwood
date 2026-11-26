@@ -38,8 +38,14 @@ export type ModelPickerIo = {
 
 export type ModelPickerSpec = {
   readonly agent: ElwoodAgentKind;
-  /** A native model-dialog shell can hold input before its rows finish. */
+  /** A native model-dialog shell can hold input before its rows finish; it is never written to. */
   readonly isCandidate: (text: string) => boolean;
+  /**
+   * Our picker's own window as far as it painted, hint row or not: only the picker grammar's
+   * rows and markers under its last header. Inside the transaction that opened it, failure
+   * cleanup gives it the picker stage's one Escape even when no grammar parses it (C-API-55).
+   */
+  readonly isPickerWindow: (text: string, authority: ModelDialogAuthority) => boolean;
   /** Positive native composer evidence for releasing a foreign-dialog hold. */
   readonly isClear: (text: string) => boolean;
   /**
@@ -180,7 +186,7 @@ async function openAndParse(
   // commands. Parse only the complete dialog the grammar recognizes as ours, the same guard
   // every key write passes, or a partial list is returned as the catalog. A picker that
   // never completes is not written to here: the transaction's failure cleanup Escapes it
-  // once it is recognizable, and a candidate that never is keeps queued input held.
+  // once it is recognizable or shows its own window; any other candidate keeps input held.
   const text = await waitForScreen(
     io.terminal,
     isOwnCompletePicker(spec),
