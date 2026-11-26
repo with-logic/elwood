@@ -29,6 +29,19 @@ back each entry are listed in `prd/14-conformance.md`.
   readiness. With no `reasoningEffort`, or
   `none`, `ready` can still come first, including when the effort comes from
   `configOverrides`, a profile or config.toml.
+- A Claude session no longer reports `ready` while Claude runs guidance that was
+  queued when its turn stopped. Claude runs that guidance at once as a new turn,
+  and Elwood used to mark the session ready at the first `Stop` and stay ready
+  through the new turn. The session now stays `running` until the new turn's
+  `Stop`, including while a `UserPromptSubmit` handler is still screening the
+  guidance. Guidance the handler blocks, or that a tool call delivered inside the
+  turn, holds nothing, and a `Stop` held only for guidance that is then blocked
+  becomes ready at once. Input Elwood wrote into the turn whose `UserPromptSubmit`
+  never fires holds the `Stop` for at most 2 s. Otherwise, if neither the new
+  turn's `Stop` nor Claude's idle composer arrives within 120 s, Elwood releases
+  the `Stop` with a new content-free `queued_turn_unconfirmed` warning. A send made
+  after `ready` while a user `Stop` hook still runs starts a new turn and holds
+  nothing, although Claude reuses the previous turn's prompt ID for it.
 
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed

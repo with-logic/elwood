@@ -2097,6 +2097,30 @@ Implementation: `src/claude/login/confirmation.ts` guards acknowledgement,
   `queued` user record shows the message delivered. Measured in three sessions on 2026-11-25:
   an interrupt about 100 ms after the hook and one during a 3 s caller hold both re-fired, the late
   one did not (C-API-62, `tests/e2e/guidance-interrupt-claude.e2e.ts`).
+- A tool-free turn with guidance still queued is followed at once by the queued turn, and
+  Claude 2.1.332's hooks name both. Its `Stop` hook carries the turn's `prompt_id`: the essay's
+  `Stop` named the essay's ID, and the queued turn's `Stop` named the new one. The screen kept its
+  working footer from the first turn into the queued one. Elwood's rendered turn watcher saw no
+  end in the 11.3 s between the two `Stop`s and reported the end 18 ms after the second. With a
+  caller handler that allowed the guidance 3.6 s after the first `Stop`, the idle composer
+  painted 27 ms after that `Stop`, while the handler was still screening. The `enqueue` record
+  followed the allow by 16 ms, and the rendered turn restarted 63 ms after it. In a turn with
+  tools, guidance allowed during the first of two `sleep` calls was delivered at that call's end:
+  `PostToolUse`, `PostToolBatch` 78 ms later, then the `remove` record 21 ms after that, before
+  the next model request, with one `Stop` for the turn. Elwood used to mark the session ready at
+  the first `Stop` and stay ready while Claude ran the queued turn; it now holds that `Stop`
+  (PRD §6.5). Measured in five private-config sessions on 2026-11-26 (C-HOOK-24,
+  `tests/e2e/guidance-queued-turn-claude.e2e.ts`).
+- A caller `UserPromptSubmit` handler that outlasts Elwood's 25 s hook timeout fails open, and
+  Elwood counts that answer as an allow. Claude 2.1.332 did too when the timeout fell after the
+  turn's `Stop`: that `Stop` came 11 s into the handler's wait, Elwood failed the hook open 14 s
+  later, Claude enqueued the guidance 4 ms after that and ran it as a new turn, and that turn's
+  `Stop` ended the hold. When the timeout fell first, Claude ran nothing for the guidance in one
+  run under load: Elwood failed the hook open 22 s before the essay's `Stop`, no queued turn
+  followed that `Stop` within 150 s, and the idle composer that painted 25 ms after it ends such
+  a hold. Elwood's rendered turn watcher reports each turn end once, so an allow that no queued
+  turn follows after the idle composer leaves the hold to the 120 s limit. Measured on
+  2026-11-26; the e2e raises `hookTimeoutMs` so its handler can answer after the `Stop`.
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
@@ -2328,6 +2352,12 @@ text), fires `UserPromptSubmit` about 100–300 ms after Enter with the previous
 turn's prompt id, and writes the user record when the hooks finish, about 2.2 s
 later. Codex 0.171.0 lost none of 10 sends of the same paste (4 at 0 ms, 3 at
 200 ms, 3 at 1.5 s) across two concurrent sessions at load 34–38.
+
+Re-measured on 2026-11-26 with a project `sleep 4` user `Stop` hook and a short
+reply. A send made right after Elwood's `ready` fired its `UserPromptSubmit` under
+the first turn's prompt id and ran as its own turn with its own `Stop`. So a
+reused prompt id after a turn has ended does not mean guidance for that turn;
+the guidance hold (§6.5) treats any submit after an unheld `Stop` as a new turn.
 
 ### An ergonomic send can finish before Claude draws its empty composer (2.1.332, 2026-11-26)
 
