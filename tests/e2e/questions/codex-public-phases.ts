@@ -94,9 +94,12 @@ type Live = Awaited<ReturnType<CodexSession["start"]>>;
 // the warnings badge. The `/plan` menu row reads "switch to Plan mode", so match the badge.
 const planModeBadge = /Plan mode(?: \(⇧tab to cycle\))? · ⚠/;
 
-/** A Plan-mode turn's modal questions; `whileRaised` checks the session before they are answered. */
+/** A Plan-mode turn's modal questions; `whileRaised` checks the session, and can race the turn's
+ * reply, before they are answered. */
 export async function publicCodexModalPhase(
-  input: Phase & { readonly whileRaised?: (live: Live) => Promise<void> },
+  input: Phase & {
+    readonly whileRaised?: (live: Live, reply: Promise<string>) => Promise<void>;
+  },
 ): Promise<string> {
   const { facade, sandbox, events, signal, note } = input;
   signal.throwIfAborted();
@@ -116,7 +119,7 @@ export async function publicCodexModalPhase(
     reply,
     signal,
   );
-  await input.whileRaised?.(live);
+  await input.whileRaised?.(live, reply);
   const [request] = await facade.listQuestions();
   assert.ok(request);
   assert.equal(request.delivery, "blocking");
