@@ -1,5 +1,6 @@
 /** Pure captured Codex question frames and scripted terminal IO (PRD §4). */
 
+import type { QuestionView } from "../../../src/codex/questions/frame.ts";
 import { payloadOf, questionCall } from "../../../src/codex/questions/records.ts";
 import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
 import { fixture, records } from "./fixtures.ts";
@@ -27,6 +28,10 @@ export function emptyComposerFrame(): QuestionFrame {
     cursorY: 0,
     cursorVisible: true,
   };
+}
+/** The view with other drawn rows; `body` stays their trimmed copy, as `questionView` builds it. */
+export function withDrawnRows(view: QuestionView, rawBody: readonly string[]): QuestionView {
+  return { ...view, rawBody, body: rawBody.map((line) => line.trim()) };
 }
 export function captured(name: string): QuestionFrame {
   return frame(fixture(name));
