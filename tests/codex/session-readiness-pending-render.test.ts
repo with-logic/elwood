@@ -5,7 +5,8 @@
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { type CodexSessionApi, type ElwoodSessionStatus, startCodex } from "../../src/index.ts";
-import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
+import { codexComposer, codexTty, tty } from "../fixtures/trust-composer.ts";
+import { capturedFrame } from "../helpers/captured-frames.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const sessions: CodexSessionApi[] = [];
@@ -22,6 +23,8 @@ const unknownPrompt =
   "  Pick an option\r\n\r\n› 1. Yes, continue\r\n  2. No, quit\r\n\r\n  Press enter to continue";
 const approval =
   "Would you like to run the following command?\r\n› 1. Yes\r\n  2. No\r\nPress enter to confirm or esc to cancel";
+/** Codex 0.164.0's boot composer: a composer, but not a configured session's. */
+const boot = capturedFrame("codex-0.164.0/boot/boot-composer").trimEnd();
 const queued = ["\u001b[200~queued text\u001b[201~", "\r"];
 
 /** A session on its configured composer, with a message queued, before any readiness hook. */
@@ -59,6 +62,21 @@ test("C-API-28 the deadline does not mark on a composer that a repaint in progre
   await paint(endSync);
   expect(statuses).toEqual(["blocked"]);
   expect(writes).toEqual([]);
+});
+
+test("C-API-28 the deadline waits for a configured composer when a repaint replaces it with another", async () => {
+  const { sent, statuses, paint, writes } = await onComposer();
+  await vi.advanceTimersByTimeAsync(9_999);
+  ptys[0]!.emitData(`${beginSync}\u001b[2J\u001b[H${tty(boot)}`);
+  await vi.advanceTimersByTimeAsync(1);
+  await paint(endSync);
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(writes).toEqual([]);
+  expect(statuses).toEqual([]);
+  await paint(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+  await vi.advanceTimersByTimeAsync(500);
+  await sent;
+  expect(writes).toEqual(queued);
 });
 
 test("C-API-28 a readiness hook during a repaint waits for it, and a dialog it draws holds the queue", async () => {
