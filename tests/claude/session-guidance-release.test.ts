@@ -49,7 +49,7 @@ test("C-HOOK-24 written guidance that never fires its hook holds the Stop for it
       .poll(() => session.status, { timeout: unheardGuidanceLimitMs * 3, interval: 50 })
       .toBe("ready");
     expect(lastDecision(session)).toBe(
-      "applied: running became ready; guidance written into the turn never fired its UserPromptSubmit",
+      "applied: running became ready; input written into the turn never fired its UserPromptSubmit",
     );
     expect(warnings).toEqual([]);
   } finally {

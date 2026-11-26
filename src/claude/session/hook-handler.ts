@@ -19,6 +19,7 @@ import type { InitialReady } from "../../runtime/readiness/initial-ready.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "../hooks/index.ts";
+import { claudePromptId } from "../hooks/prompt-id.ts";
 import { claudeTurnFailureActivity } from "../hooks/stop-failure.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { claudePasteEnvelopeId, claudeSubmitPresentation } from "../pasted-content.ts";
@@ -157,7 +158,8 @@ export function buildClaudeHookHandler(
       // Guidance may steer the current turn; every physical submission supersedes this Stop.
       const superseded = !(submissionGenerationUnchanged?.() ?? true);
       if (!superseded) deps.getTurnWatcher().arm();
-      observation.run("lifecycle", () => deps.getSession()?.submitStop(superseded));
+      const promptId = claudePromptId(event["prompt_id"]);
+      observation.run("lifecycle", () => deps.getSession()?.submitStop(promptId, superseded));
     }
     observation.report();
     return serialized;

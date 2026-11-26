@@ -4,7 +4,7 @@ import type { ElwoodSessionStatus } from "../../core/types.ts";
 type SubmissionSession = {
   readonly status: ElwoodSessionStatus;
   submitEvidence(kind: "caller_submitted"): unknown;
-  /** An adapter that tracks guidance written into a turn, running or blocked (Claude, C-HOOK-24). */
+  /** An adapter that tracks input submitted inside a turn, running or blocked (Claude, C-HOOK-24). */
   noteMidTurnSubmission?(): void;
 };
 

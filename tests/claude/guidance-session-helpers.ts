@@ -15,7 +15,7 @@ type StopResult = ClaudeHookResultForEvent<ClaudeHookEventFor<"Stop">> | undefin
 export const holdReasons = {
   queued: "ignored: Claude runs the guidance queued at this Stop as a new turn",
   screening: "ignored: a UserPromptSubmit handler is still screening guidance",
-  unheard: "ignored: guidance written into the turn has not fired its UserPromptSubmit",
+  unheard: "ignored: input written into the turn has not fired its UserPromptSubmit",
 } as const;
 
 type GuidanceHandlers = {

@@ -7,7 +7,7 @@
  */
 import { type DeadlineClock, deadlineClock } from "../../../core/timers.ts";
 
-/** How long guidance Elwood wrote may go unheard: its hook fires ~130 ms after the Enter. */
+/** How long input Elwood wrote may go unheard: its hook fires ~130 ms after the Enter. */
 export const unheardGuidanceLimitMs = 2_000;
 /** The longest a `Stop` is held with neither the queued turn's `Stop` nor an idle composer. */
 export const queuedTurnHangLimitMs = 120_000;
@@ -40,7 +40,7 @@ export class ClaudeGuidanceLedger {
     this.clock = clock;
   }
 
-  /** Elwood wrote guidance into a Claude turn: the session was not ready. */
+  /** Elwood submitted input inside a Claude turn: the prompt that started it, or guidance. */
   written(): void {
     this.unheard.push(this.clock.now());
   }
@@ -70,11 +70,14 @@ export class ClaudeGuidanceLedger {
     this.undelivered = false;
   }
 
-  /** Records an unblocked `Stop`, and holds it while guidance is queued behind its turn. */
-  holdStop(): GuidanceHold | undefined {
+  /**
+   * Records an unblocked `Stop`, and holds it while guidance is queued behind its turn. A `Stop`
+   * without a prompt ID, from a CLI that does not name its turns, is never held.
+   */
+  holdStop(promptId: string | undefined): GuidanceHold | undefined {
     this.clearTimers();
     this.pruneUnheard();
-    const hold = this.disposed ? undefined : this.waitingOn();
+    const hold = this.disposed || promptId === undefined ? undefined : this.waitingOn();
     this.held = hold !== undefined;
     this.queuedTurnAllowed = this.undelivered;
     this.undelivered = false;

@@ -24,12 +24,12 @@ import {
 const holdReasons: Readonly<Record<GuidanceHold, string>> = {
   queued: "Claude runs the guidance queued at this Stop as a new turn",
   screening: "a UserPromptSubmit handler is still screening guidance",
-  unheard: "guidance written into the turn has not fired its UserPromptSubmit",
+  unheard: "input written into the turn has not fired its UserPromptSubmit",
 };
 /** What ended a hold that neither the next `Stop` nor Claude's idle composer ended. */
 const releaseReasons: Readonly<Record<GuidanceRelease, string>> = {
   blocked: "the guidance held at the Stop was blocked",
-  unheard: "guidance written into the turn never fired its UserPromptSubmit",
+  unheard: "input written into the turn never fired its UserPromptSubmit",
   hung: "no queued turn ended within the hang limit",
 };
 /** Hooks after which Claude makes its next model request, delivering allowed guidance. */
@@ -68,8 +68,8 @@ export abstract class ClaudeGuidanceSession extends ClaudeTurnEndSession {
   }
 
   /** An unblocked `Stop`. One that a newer submission superseded only updates the ledger. */
-  submitStop(superseded: boolean): void {
-    const hold = this.guidance.holdStop();
+  submitStop(promptId: string | undefined, superseded: boolean): void {
+    const hold = this.guidance.holdStop(promptId);
     if (superseded) return;
     if (hold === undefined) this.submitEvidence("hook_turn_ended");
     else this.statusEngine.submit("hook_turn_ended", { holdReason: holdReasons[hold] });
