@@ -8,8 +8,10 @@
  *
  * A prompt with known copy REQUIRES an explanatory sentence before any key is
  * written: a bare allowlisted header is a hold-only candidate, never a verified
- * dialog. Only version-variable rows (a count, a link label, a later sentence)
- * stay optional.
+ * dialog. Only version-variable rows (a count, a link label, a later sentence) and the rows a
+ * folder's settings draw stay optional: Claude's load row, its hooks warning, and its
+ * permissions warning, whose rules are the folder's own opaque text. Any other prose fails
+ * closed.
  */
 
 /** Skill and plugin gates have no captured explanatory copy; none is accepted. */
