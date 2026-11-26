@@ -5,14 +5,16 @@
  * Claude 2.1.332's first launch draws, in order: a text-style picker, security notes, on
  * some terminals an offer to change the terminal's own settings, and the workspace trust
  * question. That offer edits the user's real terminal configuration when accepted, outside
- * any config dir, so the answers here skip it with Esc and never press Enter on a screen
- * they do not know. The terminal variables Claude detects it by are unset as well.
+ * any config dir, so the answers skip it with Esc (`claude-first-launch-answers.ts`) and
+ * never press Enter on a screen they do not know. The terminal variables Claude detects it
+ * by are unset as well.
  */
 
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeSessionApi } from "../../src/index.ts";
 import { privateTempDir, removeOrReport } from "../helpers/private-temp.ts";
+import { firstLaunchKey } from "./claude-first-launch-answers.ts";
 import { parseGlobalConfig } from "./claude-global-config.ts";
 import { userConfigDir } from "./claude-home.ts";
 import { registerPrivateHome } from "./home-guard.ts";
@@ -63,18 +65,6 @@ export function firstLaunch(): FirstLaunch {
   return { env, dispose };
 }
 
-/**
- * Each first-launch screen a host answers, by its own text, and the key that answers it.
- * The terminal-setup offer comes first, so a frame that still shows an earlier screen's
- * text with it gets Esc, never Enter.
- */
-const answers: readonly { readonly screen: RegExp; readonly key: string }[] = [
-  // Esc skips the offer to change the terminal's settings ("Esc to skip").
-  { screen: /Use Claude Code's terminal setup\?/u, key: "\u001b" },
-  { screen: /Choose the text style/u, key: "\r" },
-  { screen: /Security notes:[\s\S]*Press Enter to continue/u, key: "\r" },
-];
-
 const maxAnswers = 6;
 
 /**
@@ -90,12 +80,12 @@ export async function answerFirstLaunch(session: ClaudeSessionApi): Promise<read
       if (session.status !== "blocked") return null;
       const text = session.terminal.snapshot().text;
       if (text === answered) return undefined;
-      return answers.find(({ screen }) => screen.test(text)) ?? undefined;
+      return firstLaunchKey(text);
     }, "a first-launch screen to answer");
     if (next === null) break;
     answered = session.terminal.snapshot().text;
-    await session.sendKeys(next.key);
-    pressed.push(next.key);
+    await session.sendKeys(next);
+    pressed.push(next);
   }
   return pressed;
 }
