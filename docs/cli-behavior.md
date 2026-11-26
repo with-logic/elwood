@@ -731,6 +731,21 @@ only their raw observation. C-CODEX-16, C-CODEX-22.
   the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
   native binary and field-captured model/effort dialogs.
 
+## Startup screens that show an API key (2026-11-26)
+
+Codex 0.171.0, on a `CODEX_HOME` with no `auth.json`, offers `3. Sign in another
+way`. That opens a submenu whose first choice is an API-key page, which prefills
+`OPENAI_API_KEY` and shows it unmasked. An `OPENAI_API_KEY` that the session's `env`
+overrides still appears there when the launch shell's startup files export it. A probe
+that replaced every character of the key showed it in a one-row bordered field
+(`│sk-…│`), cut at the border at 80 and 120 columns rather than wrapped. No screen
+observed so far wraps a key across rows, so the wrap rules of the `unrecognized_startup`
+redaction (§5.4, C-ATTN-06) are defensive; other widths and later versions were not
+probed. Claude 2.1.332 shows a custom `ANTHROPIC_API_KEY` masked with dots (`sk-ant-...`
+and its last characters) when it asks whether to use it. Elwood recognizes neither
+screen, so a session left on one reaches the initial-readiness backstop, whose activity
+carries the screen redacted. The terminal stream carries it as drawn.
+
 ## Login-shell `CODEX_HOME` (2026-10-25)
 
 Codex runs as `$SHELL -l -i -c 'exec codex …'` (§4.2). The login shell inherits
