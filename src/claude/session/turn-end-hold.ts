@@ -64,11 +64,10 @@ export class ClaudeTurnEndHold {
   }
 }
 
-/** What ends a turn: its `Stop`, its rendered end, or a completed interrupt. */
+/** What ends a turn: its `Stop`, or its rendered end, which an interrupted turn has too. */
 const turnEndEvidence: ReadonlySet<StatusEvidenceKind> = new Set([
   "hook_turn_ended",
   "rendered_turn_ended",
-  "stop_completed",
 ]);
 
 /** Claude's footer mode item while auto mode is on, the only mode that offers its setup. */
@@ -82,8 +81,9 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
     return this.turnEndHold;
   }
   override submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
-    // A new rendered turn ends the last one's hold, so input for this turn is not held.
-    if (kind === "rendered_turn_started") this.turnEnd.restore(undefined);
+    // Resumed work ends the last turn's hold, so input for the running turn is not held.
+    if (kind === "rendered_turn_started" || (kind === "blocking_prompt_cleared" && workingVisible))
+      this.turnEnd.restore(undefined);
     // A turn end seen twice, by its `Stop` and by its rendered end, keeps the first hold.
     if (
       !turnEndEvidence.has(kind) ||
@@ -92,14 +92,14 @@ export abstract class ClaudeTurnEndSession extends ClaudeQuestionsSession {
     )
       return super.submitEvidence(kind, workingVisible);
     // Reaching `ready` reopens the queue even when a status observer throws, so the hold is
-    // in place first. A `Stop` that finds the session already `ready` (a dialog cleared to
-    // the composer first) still ends a turn, so only a turn end that left the session short
-    // of `ready` undoes it.
+    // in place first. A turn end that finds the session already `ready` still ends a turn,
+    // and one while `blocked` (a dismissed dialog that ended it) holds until that dialog's
+    // clearance reaches `ready`. Only a turn end that left the session elsewhere undoes it.
     const previous = this.turnEnd.arm();
     try {
       return super.submitEvidence(kind, workingVisible);
     } finally {
-      if (!this.reachedReady()) this.turnEnd.restore(previous);
+      if (!this.reachedReady() && this.status !== "blocked") this.turnEnd.restore(previous);
     }
   }
   /** Claude mounts the offer only in auto mode: as launched, or as its footer shows now. */

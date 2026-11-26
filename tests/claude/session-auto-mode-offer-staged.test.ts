@@ -6,15 +6,12 @@
  */
 import { afterEach, expect, test } from "vitest";
 import { nativeFrameOutput, readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { offerOnScreen, permissionScreen } from "../fixtures/offer-frames.ts";
 import { createFacadeFixture, nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
-import { tty } from "../fixtures/trust-composer.ts";
-import { capturedFrame } from "../helpers/captured-frames.ts";
 import type { FakePty } from "../helpers/fake-pty.ts";
 
 afterEach(resetAdapters);
 
-/** The captured offer; the hardware cursor sits on its `❯ 1. Yes` row, as Claude leaves it. */
-const offer = `\u001b[2J\u001b[H${tty(capturedFrame("claude-2.1.332/auto-mode-offer").trimEnd())}\u001b[32;3H`;
 const closed = nativeFrameOutput(
   readNativeInputFrame(
     new URL("../fixtures/claude-2.1.332/offer-closed-staged.json", import.meta.url),
@@ -27,8 +24,8 @@ const esc = "\u001b";
 const heldMs = 1_200;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A 140x40 Claude session, past its readiness hook, that paints the offer once `trigger` is written. */
-async function withOfferOn(trigger: string) {
+/** A 140x40 Claude session, past its readiness hook, that paints `dialog` once `trigger` is written. */
+async function withOfferOn(trigger: string, dialog = offerOnScreen) {
   const { helper, cwd, facade } = createFacadeFixture("claude", {
     initialSize: { cols: 140, rows: 40 },
   });
@@ -38,13 +35,16 @@ async function withOfferOn(trigger: string) {
   const write = pty.write.bind(pty);
   pty.write = (data) => {
     write(data);
-    if (data === trigger) pty.emitData(offer);
+    if (data === trigger) pty.emitData(dialog);
   };
   return { facade, live, pty };
 }
 
-test("C-ATTN-09 an Enter held behind the offer submits the paste it closed over", async () => {
-  const { facade, live, pty } = await withOfferOn(paste);
+test.each([
+  { dialog: "the offer", frame: offerOnScreen },
+  { dialog: "another Claude dialog", frame: permissionScreen },
+])("C-ATTN-09 an Enter held behind $dialog submits the paste it closed over", async ({ frame }) => {
+  const { facade, live, pty } = await withOfferOn(paste, frame);
   try {
     await expect.poll(() => live.status).toBe("ready");
     const sending = live.sendMessage(prompt);
@@ -53,7 +53,7 @@ test("C-ATTN-09 an Enter held behind the offer submits the paste it closed over"
     await wait(heldMs);
     expect(pty.writes).toEqual([paste]);
 
-    // The human dismisses the offer; the composer it closes over still holds the paste.
+    // The human dismisses the dialog; the composer it closes over still holds the paste.
     await facade.sendKeys(esc);
     pty.emitData(closed);
     await expect.poll(() => pty.writes).toEqual([paste, esc, "\r"]);
