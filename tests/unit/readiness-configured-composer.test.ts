@@ -5,7 +5,7 @@
  */
 
 import { afterEach, expect, test, vi } from "vitest";
-import { codexComposerConfigured } from "../../src/codex/screen/clearance.ts";
+import { codexReadinessEvidence } from "../../src/codex/screen/clearance.ts";
 import { initialReady } from "../../src/runtime/readiness/initial-ready.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { capturedFrame } from "../helpers/captured-frames.ts";
@@ -17,16 +17,16 @@ const boot = capturedFrame("codex-0.164.0/boot/boot-composer");
 const configured = capturedFrame("codex-0.164.0/boot/configured-composer");
 const idle = { composer_visible: true, working_visible: false, blocking_prompt_visible: false };
 const dialog = { ...idle, blocking_prompt_visible: true };
-const codex = (configured = codexComposerConfigured, onBackstop = () => {}) => ({
+const codex = (configured = codexReadinessEvidence, onBackstop = () => {}) => ({
   ...noStartupScreens,
   configured,
   onBackstop,
 });
 
 test("C-API-28 Codex's boot composer is not configured; its footed composer is", () => {
-  expect(codexComposerConfigured(boot)).toBe(false);
-  expect(codexComposerConfigured(configured)).toBe(true);
-  expect(codexComposerConfigured(configured.replace(/^›.*$/m, ""))).toBe(false);
+  expect(codexReadinessEvidence(boot)).toBe(false);
+  expect(codexReadinessEvidence(configured)).toBe(true);
+  expect(codexReadinessEvidence(configured.replace(/^›.*$/m, ""))).toBe(false);
 });
 
 test.each([
@@ -36,7 +36,7 @@ test.each([
   "codex-0.170.0/xhigh-fast-composer",
   "codex-0.170.0/effort-only-composer",
 ])("C-API-28 captured %s is configured", (capture) => {
-  expect(codexComposerConfigured(capturedFrame(capture))).toBe(true);
+  expect(codexReadinessEvidence(capturedFrame(capture))).toBe(true);
 });
 
 test("C-API-28 a deadline expiring on Codex's boot composer waits for the configured one", () => {
@@ -56,7 +56,7 @@ test("C-API-28 a deadline expiring on Codex's boot composer waits for the config
 
 test("C-API-28 the configured-composer check runs only while the deadline waits for it", () => {
   vi.useFakeTimers();
-  const configuredCheck = vi.fn(codexComposerConfigured);
+  const configuredCheck = vi.fn(codexReadinessEvidence);
   const gate = createReadinessGate(() => {}, false, codex(configuredCheck));
   gate.ready.armDeadline();
   gate.observeReadinessFrame(idle, false, boot);
@@ -82,7 +82,7 @@ test("C-API-28 the backstop warns at sixty seconds without releasing readiness",
   vi.useFakeTimers();
   let ready = 0;
   const reported = vi.fn();
-  const gate = createReadinessGate(() => ready++, false, codex(codexComposerConfigured, reported));
+  const gate = createReadinessGate(() => ready++, false, codex(codexReadinessEvidence, reported));
   gate.observeReadinessFrame(idle, false, boot);
   gate.ready.armDeadline();
   vi.advanceTimersByTime(59_999);
@@ -98,7 +98,7 @@ test("C-API-28 missing evidence warns even behind a dialog, and later clearance 
   vi.useFakeTimers();
   let ready = 0;
   const reported = vi.fn();
-  const gate = createReadinessGate(() => ready++, false, codex(codexComposerConfigured, reported));
+  const gate = createReadinessGate(() => ready++, false, codex(codexReadinessEvidence, reported));
   gate.observeReadinessFrame(dialog, false, boot); // a dialog holds readiness past the backstop
   gate.ready.armDeadline();
   vi.advanceTimersByTime(60_000);

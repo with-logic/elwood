@@ -7,8 +7,8 @@
 import { expect, test } from "vitest";
 import {
   codexComposerClearance,
-  codexComposerConfigured,
   codexComposerRowsEmpty,
+  codexReadinessEvidence,
 } from "../../../src/codex/screen/clearance.ts";
 import { codexFooterCaptures170 } from "../../fixtures/codex-footer-captures-170.ts";
 
@@ -54,7 +54,7 @@ function screen(footer: readonly string[], below: readonly string[] = []): strin
 const status = (directory: string, label = "", name = thread) =>
   wrap(`GPT-6-Astra xhigh · ${directory} · ${name}${label}`);
 const verdict = (frame: string, width = cols) => [
-  codexComposerConfigured(frame, width),
+  codexReadinessEvidence(frame, width),
   codexComposerClearance(frame, { cols: width }),
 ];
 const accepted = (frame: string, width = cols) => verdict(frame, width).every(Boolean);

@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- A Codex session that requests a `reasoningEffort` other than `none` now reaches
+  `ready` only once Codex's status footer shows an effort label other than `default`.
+  Codex 0.172 paints the footer seconds before it applies the session's configuration,
+  and applying it discards a Plan mode or model picked before it, so a `/plan` or
+  `setModel` right after `ready` could be lost. If the label never appears, readiness
+  counts the footer at the 60-second backstop and emits a new `codex_effort_unconfirmed`
+  warning. With no `reasoningEffort`, or `none`, `ready` can still come first, including
+  when the effort comes from `configOverrides`, a profile or config.toml.
+
 - A second Claude `send()` or `stream()` no longer fails with `wait_timeout`
   ("Could not clear the staged composer draft.") when the previous turn completed
   before Elwood saw the empty composer. This was most likely in auto mode. Elwood

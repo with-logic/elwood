@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import {
   codexComposerClearance,
-  codexComposerConfigured,
+  codexReadinessEvidence,
 } from "../../../src/codex/screen/clearance.ts";
 import { codexEmptyInputFrame } from "../../../src/codex/screen/empty-input.ts";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
@@ -28,7 +28,7 @@ const atWidths = wrapped.flatMap((capture) => [
 /** Readiness evidence and trust clearance for the rows in a terminal `cols` wide. */
 const recognized = (rows: readonly string[], cols?: number) => {
   const frame = rows.join("\n");
-  return [codexComposerConfigured(frame, cols), codexComposerClearance(frame, { cols })];
+  return [codexReadinessEvidence(frame, cols), codexComposerClearance(frame, { cols })];
 };
 
 /** Paint the capture into a terminal `cols` wide; `draft` replaces the placeholder. */
