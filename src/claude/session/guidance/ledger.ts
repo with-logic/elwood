@@ -50,7 +50,7 @@ export class ClaudeGuidanceLedger {
   private readonly release: (cause: GuidanceRelease) => void;
   private readonly clock: DeadlineClock;
 
-  constructor(release: (cause: GuidanceRelease) => void, clock: DeadlineClock = deadlineClock) {
+  constructor(release: (cause: GuidanceRelease) => void, clock: DeadlineClock) {
     this.release = release;
     this.clock = clock;
   }
