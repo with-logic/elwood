@@ -117,12 +117,12 @@ export function createSessionFrameObserver(
  * session's terminal.
  */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold"> & {
-    readonly terminal: { readonly xterm: object };
-  },
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold" | "terminal">,
   trust: StartupAutomationState & { callerInput(): void },
   readiness: ReadinessGate,
 ): void {
+  // Bound synchronously after the terminal attaches, before PTY output can arrive.
+  readiness.bindTerminal(session.terminal);
   session.bindInitialReadinessHold(readiness);
   const stopCallerInput = onCallerInput(session.terminal, () => trust.callerInput());
   session.closing.signal.addEventListener(
