@@ -43,6 +43,8 @@ test("C-ATTN-02 a Codex turn that ends with its queued question on screen settle
     const live = await session.start();
     await live.waitForStatus((status) => status === "ready", 45_000);
     const reply = session.send(prompt, { timeoutMs: 60_000 });
+    // Report the first failure, not the turn this test's cleanup ends.
+    reply.catch(() => undefined);
     await waitForPublicCodexQuestion(() => events.filter((e) => e.phase === "raised").length === 2);
     const [size, color] = await session.listQuestions();
     assert.ok(size && color);
