@@ -1,4 +1,4 @@
-/** Native trust option rows and gate-bound footers; unrelated text cannot masquerade as either (C-TRUST-01, C-CODEX-15). */
+/** Native trust option rows and gate-bound footers; unrelated text cannot masquerade as either (C-TRUST-01, C-CODEX-15, C-CLAUDE-28). */
 
 export const claudeWorkspaceOptions =
   /^(?:Yes(?:, (?:I trust this folder|proceed|continue))?|No(?:, (?:exit|cancel))?)$/i;
@@ -31,9 +31,11 @@ export const codexFolderAccessOptions = new RegExp(
   `^(?:${Object.values(codexFolderAccessLabels).map(RegExp.escape).join("|")})$`,
 );
 
-// Codex 0.164's footers when hook trust is not bypassed. Unlike the generic native footers,
-// each belongs to one gate and ends a dialog only under that gate (`TrustPromptSpec.footer`).
+// Unlike the generic native footers, each of these belongs to one gate and ends a dialog only
+// under that gate (`TrustPromptSpec.footer`): Codex 0.164's when hook trust is not bypassed,
+// and Claude's MCP server prompt's.
 export const codexFolderAccessFooter = "enter continue · esc back";
 export const codexHooksFooter = "enter confirm · esc skip";
-export const gateFooters = [codexFolderAccessFooter, codexHooksFooter] as const;
+export const claudeMcpFooter = "Enter to confirm · Esc to reject";
+export const gateFooters = [codexFolderAccessFooter, codexHooksFooter, claudeMcpFooter] as const;
 export type GateFooter = (typeof gateFooters)[number];

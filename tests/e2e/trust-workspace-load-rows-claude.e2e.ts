@@ -12,7 +12,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
@@ -103,7 +103,8 @@ test("C-E2E-29 listClaudeModels refuses a folder whose .mcp.json declares a serv
 
 test("C-E2E-29 autotrust answers the workspace and MCP server prompts and the server starts", {
   skip,
-  timeout: testTimeoutMs,
+  // A second marker-length wait covers the MCP server prompt's answer.
+  timeout: testTimeoutMs + markerTimeoutMs,
 }, async () => {
   const { project, marker } = mcpProject();
   let session: ClaudeSessionApi | undefined;
@@ -112,9 +113,16 @@ test("C-E2E-29 autotrust answers the workspace and MCP server prompts and the se
     session = started.session;
     // Claude shows its MCP server prompt only once the folder is trusted.
     await readyWithMarker(session, marker);
-    const both = () => (started.answers.length === 2 ? true : undefined);
+    const both = () => (started.answers.length >= 2 ? true : undefined);
     await waitFor(both, "both prompts answered", markerTimeoutMs);
     assert.deepEqual(started.answers, ["workspace_trust", "mcp_trust"]);
+    // "Use this MCP server" approves this server alone; the all-future row would persist
+    // `enableAllProjectMcpServers` for every server the folder adds later.
+    const local = JSON.parse(
+      readFileSync(join(project.cwd, ".claude", "settings.local.json"), "utf8"),
+    );
+    assert.deepEqual(local.enabledMcpjsonServers, ["probe"]);
+    assert.equal(local.enableAllProjectMcpServers, undefined);
     await session.stop();
   } finally {
     await cleanup(session);

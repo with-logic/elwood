@@ -1,9 +1,9 @@
 /**
  * Recognized native trust-dialog explanations, excluding arbitrary intervening prose.
- * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26/C-CLAUDE-29. Claude copy is captured in
- * trust-responder-cursor, trust-bypass-permissions, claude-workspace-trust-hooks and
- * claude-workspace-load-rows tests, the last two from `tests/fixtures/claude-2.1.329/trust/` and
- * `tests/fixtures/claude-2.1.332/trust/`; Codex directory/hooks were captured from 0.154.0.
+ * Implements PRD §5.4/C-TRUST-01/C-CLAUDE-26/C-CLAUDE-28/C-CLAUDE-29. Claude copy is captured in
+ * trust-responder-cursor, trust-bypass-permissions, claude-workspace-trust-hooks,
+ * claude-workspace-load-rows and claude-mcp-server-prompt tests, the last three from
+ * `tests/fixtures/claude-2.1.329/trust/` and `tests/fixtures/claude-2.1.332/trust/`; Codex directory/hooks were captured from 0.154.0.
  *
  * A prompt with known copy REQUIRES an explanatory sentence before any key is
  * written: a bare allowlisted header is a hold-only candidate, never a verified

@@ -13,9 +13,8 @@ import { type GateFooter, gateFooters } from "./options.ts";
 const headerStart =
   /^(?:Do you|Quick safety|Is this|Load this|Trust the|Trust this|New MCP|WARNING:|Claude Code running|Hooks need)/i;
 const numberedRow = /^\s*[❯›>]?\s*\d+[.)]\s*\S/;
-// Claude's MCP server prompt ends in "Esc to reject" where other gates say "Esc to cancel".
 const footerRow =
-  /^\s*(?:(?:Enter to confirm|Esc to (?:cancel|reject))(?:\s*[·•]\s*(?:Enter to confirm|Esc to (?:cancel|reject)))*|Press enter to (?:continue|confirm or esc to (?:cancel|go back))|enter continue · esc quit)\s*$/i;
+  /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to (?:cancel|go back))|enter continue · esc quit)\s*$/i;
 // Native Codex's location prelude begins with >; conversation/composer rows do too.
 const conversationRow =
   /^\s*(?:[●•]|[❯›»](?!\s*\d+[.)])|>(?!\s+You are in (?:\/|[A-Z]:[\\/]))(?!\s*\d+[.)])|(?:user|assistant)\s*:)/i;

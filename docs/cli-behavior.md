@@ -890,8 +890,12 @@ MCP server`, `Use this and all future MCP servers in this project`, and `❯ Con
 without using this MCP server`, and the footer `Enter to confirm · Esc to reject`
 (`tests/fixtures/claude-2.1.332/trust/mcp-server-*.txt`). The session waits on it,
 and the server starts only after `Use this MCP server`. Elwood recognizes the prompt
-only with that body and footer: `autotrust: true` chooses `Use this MCP server`, and
-the model probe refuses the prompt from its header. For several new servers at once,
+only with that body, and binds the footer to it, so `Esc to reject` ends no other
+dialog: `autotrust: true` chooses `Use this MCP server`, never the all-future row,
+which persists approval for every server the folder adds later, and the model probe
+refuses the prompt from its header. For a server a plugin provides, the binary
+appends ` (from plugin <plugin>)` to the header (not captured); Elwood does not
+recognize that variant, so it fails closed. For several new servers at once,
 the binary draws a checklist instead, `<N> new MCP servers found in this project`,
 which Elwood does not recognize (not captured). C-E2E-29.
 
