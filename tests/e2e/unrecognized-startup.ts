@@ -6,6 +6,7 @@
  */
 // biome-ignore-all lint/suspicious/noMisplacedAssertion: Both proofs share these assertions.
 import assert from "node:assert/strict";
+import type { ElwoodAgentKind } from "../../src/index.ts";
 import { type E2eSession, observeSession, waitFor } from "./helpers.ts";
 import type { PtyRecord } from "./pty-record.ts";
 import { isTerminalProtocolReply } from "./terminal-protocol-reply.ts";
@@ -18,7 +19,7 @@ export async function awaitStartupBlock(
   session: E2eSession,
   record: PtyRecord,
   sent: Promise<unknown>,
-  expected: { readonly label: string; readonly screen: string },
+  expected: { readonly label: `${ElwoodAgentKind}-unrecognized-startup`; readonly screen: string },
 ) {
   const observed = observeSession(session);
   // A held send stays pending: neither submitted nor refused.

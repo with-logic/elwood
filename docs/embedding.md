@@ -225,9 +225,10 @@ attention, and an `unrecognized_startup` activity labelled `initial_ready_deadli
 carries the screen's bounded text. Answer it with `sendKeys`, or stop the session;
 queued input is released once a verified composer follows. On Claude and Codex,
 `initial_ready_backstop` warns that startup evidence is still missing after 60 seconds:
-readiness and queued text remain held. If no recognized dialog hold is active, the
-matching `unrecognized_startup` activity carries bounded live screen text for
-display. Either text replaces `sk-` API-key-shaped tokens, including a key wrapped
+readiness and queued text remain held. If no recognized dialog or other recognized
+startup hold, such as trust automation or Codex's repaint after an update skip, is
+active, the matching `unrecognized_startup` activity carries bounded live screen text
+for display. Either text replaces `sk-` API-key-shaped tokens, including a key wrapped
 across rows, with a redaction marker. Otherwise it can include whatever the agent
 showed, such as account or workspace details or other credentials.
 Recognized update menus are safely skipped or reported as `blocked` with

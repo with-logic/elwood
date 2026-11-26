@@ -24,9 +24,18 @@ test.each([
   expect(isCodexBootFrame(capturedFrame(path))).toBe(boot);
 });
 
+// Each row but the first matches one form of answerable row alone.
 test.each([
-  ["a numbered choice", "  1. Yes"],
   ["a key hint", "  Press Enter to continue"],
+  ["a caret-led choice", "  ❯ Light mode"],
+  ["a numbered choice", "  1. Yes"],
+  ["a parenthesized number", "  2) Dark mode"],
+  ["an Esc hint", "  Esc to skip"],
+  ["a Tab hint", "  Tab to switch theme"],
+  ["a Press hint", "  Press any key"],
+  ["a bare confirm hint", "  Type y to confirm"],
+  ["a bare cancel hint", "  Ctrl+C to cancel"],
+  ["a bare continue hint", "  Pick a theme to continue"],
   ["a yes/no question", "  Continue? (y/n)"],
 ])("C-ATTN-09 a header with %s is not a boot frame", (_, row) => {
   expect(isClaudeBootFrame(` ▐▛███▛█   Claude Code v2.1.332\n${row}`)).toBe(false);

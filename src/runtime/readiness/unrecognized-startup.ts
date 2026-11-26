@@ -54,7 +54,8 @@ export function createUnrecognizedStartupWatch(
   let current = false;
   let blocking = false;
   let reported = false;
-  const showsRecognizedHold = (
+  /** A recognized dialog or automation hold, visible work, or the configured composer. */
+  const hasRecognizedStartupEvidence = (
     facts: ComposerReadyFacts,
     automationInputBlocking: boolean,
     { text, cols }: { readonly text: string; readonly cols?: number | undefined },
@@ -76,9 +77,10 @@ export function createUnrecognizedStartupWatch(
       // Before the deadline and after readiness `current` and `blocking` are already false.
       if (!deadline || ended) return false;
       const pending = frame.text.trim() === "" || !evidence.completed();
-      const held = !pending && showsRecognizedHold(facts, automationInputBlocking, frame);
-      current = !(pending || held || evidence.nativeStartupScreen(frame.text));
-      blocking = current || (blocking && !held);
+      const recognizedEvidence =
+        !pending && hasRecognizedStartupEvidence(facts, automationInputBlocking, frame);
+      current = !(pending || recognizedEvidence || evidence.nativeStartupScreen(frame.text));
+      blocking = current || (blocking && !recognizedEvidence);
       // A recognized frame ends the run, so the next unrecognized one is reported again.
       const endsRun = !(pending || current);
       if (endsRun) reported = false;

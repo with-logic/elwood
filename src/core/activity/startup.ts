@@ -3,9 +3,13 @@ import type { InitialReadyBackstopWarning } from "../warnings/lifecycle.ts";
 import type { ElwoodAgentKind } from "./index.ts";
 
 const maxStartupScreenCodeUnits = 8_192;
-/** A whole API key has at least this many characters after `sk-`. */
+/** A whole API-key-shaped token has at least this many characters after `sk-`. */
 const minKeyChars = 8;
-/** An API key a CLI showed, such as one it prefilled from its environment. */
+/**
+ * An `sk-` API-key-shaped token a CLI showed, such as a key it prefilled from its
+ * environment. This is a shape heuristic, not credential validation: other credentials
+ * and tokens of other shapes pass through unchanged.
+ */
 const apiKeyShape = new RegExp(`\\bsk-[A-Za-z0-9._-]{${minKeyChars},}`, "g");
 /**
  * `sk-` and any key characters ending a row, inside an optional box border: however short,
